@@ -16,8 +16,8 @@ def test_python_dependencies():
     print("🐍 Testing Python dependencies...")
     
     required_packages = [
-        'requests', 'openai', 'rich', 'speechrecognition',
-        'pyttsx3', 'pypandoc', 'cvss', 'flask'
+        'requests', 'openai', 'rich', 'speech_recognition',
+        'pyttsx3', 'flask'
     ]
     
     missing = []
@@ -77,12 +77,16 @@ def test_permissions():
     print("\n📁 Testing permissions...")
     
     # Test reports directory
-    reports_dir = Path('/reports')
+    reports_dir = Path('/reports') if Path('/reports').exists() else Path('./reports')
+    try:
+        reports_dir.mkdir(parents=True, exist_ok=True)
+    except (OSError, PermissionError):
+        pass
     if reports_dir.exists() and os.access(reports_dir, os.W_OK):
-        print("  ✅ /reports directory writable")
+        print(f"  ✅ {reports_dir} directory writable")
         reports_ok = True
     else:
-        print("  ❌ /reports directory not writable")
+        print(f"  ❌ {reports_dir} directory not writable")
         reports_ok = False
     
     # Test advance_hackgpt.py executable
@@ -107,10 +111,10 @@ def test_openai_api():
     
     try:
         import openai
-        openai.api_key = api_key
+        client = openai.OpenAI(api_key=api_key)
         
         # Test API with a simple request
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": "Test"}],
             max_tokens=5

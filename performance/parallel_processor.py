@@ -14,7 +14,11 @@ import queue
 import asyncio
 from typing import Dict, List, Any, Optional, Callable, Union
 from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+def _utc_now() -> datetime:
+    """Return timezone-aware current UTC time."""
+    return datetime.now(timezone.utc)
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, Future, as_completed
 from enum import Enum
 import uuid
@@ -63,7 +67,7 @@ class Task:
     
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.utcnow()
+            self.created_at = _utc_now()
 
 @dataclass
 class WorkerStats:
@@ -87,9 +91,9 @@ class TaskQueue:
     def put(self, task: Task, block: bool = True, timeout: Optional[float] = None):
         """Add task to queue"""
         with self.lock:
-            # Priority queue uses (priority, item) tuples
-            # Lower numbers = higher priority
-            priority_item = (-task.priority, task.created_at.timestamp(), task)
+            # Priority queue uses (priority, timestamp, task_id, item) tuples
+            # Lower numbers = higher priority; task_id prevents unorderable Task comparison
+            priority_item = (-task.priority, task.created_at.timestamp(), task.task_id, task)
             
             self.queue.put(priority_item, block=block, timeout=timeout)
             self.tasks[task.task_id] = task
@@ -100,11 +104,11 @@ class TaskQueue:
         """Get next task from queue"""
         try:
             priority_item = self.queue.get(block=block, timeout=timeout)
-            task = priority_item[2]  # Extract task from priority tuple
+            task = priority_item[3]  # Extract task from priority tuple
             
             with self.lock:
                 task.status = TaskStatus.RUNNING
-                task.started_at = datetime.utcnow()
+                task.started_at = _utc_now()
                 
             return task
             
@@ -153,7 +157,7 @@ class Worker:
         self.task_registry = task_registry
         self.stats = WorkerStats(
             worker_id=worker_id,
-            started_at=datetime.utcnow()
+            started_at=_utc_now()
         )
         self.running = False
         self.logger = logging.getLogger(f"worker-{worker_id}")
@@ -173,7 +177,7 @@ class Worker:
                 
             except queue.Empty:
                 # No tasks available, update heartbeat
-                self.stats.last_heartbeat = datetime.utcnow()
+                self.stats.last_heartbeat = _utc_now()
                 continue
             except Exception as e:
                 self.logger.error(f"Worker error: {e}")
@@ -205,7 +209,7 @@ class Worker:
             # Update task status
             task.status = TaskStatus.SUCCESS
             task.result = result
-            task.completed_at = datetime.utcnow()
+            task.completed_at = _utc_now()
             task.worker_id = self.worker_id
             
             self.stats.tasks_completed += 1
@@ -226,7 +230,7 @@ class Worker:
             else:
                 # Mark as failed
                 task.status = TaskStatus.FAILURE
-                task.completed_at = datetime.utcnow()
+                task.completed_at = _utc_now()
                 self.stats.tasks_failed += 1
         
         finally:
@@ -234,7 +238,7 @@ class Worker:
             self.task_queue.update_task(task)
             self.stats.current_task = None
             self.stats.status = "idle"
-            self.stats.last_heartbeat = datetime.utcnow()
+            self.stats.last_heartbeat = _utc_now()
     
     def _execute_with_timeout(self, func: Callable, args: tuple, 
                              kwargs: dict, timeout: int) -> Any:
@@ -377,6 +381,8 @@ class ParallelProcessor:
                     return task.result
                 elif task.status == TaskStatus.FAILURE:
                     raise Exception(f"Task failed: {task.error}")
+                elif task.status == TaskStatus.CANCELLED:
+                    raise RuntimeError(f"Task {task_id} was cancelled")
                 
                 if timeout and (time.time() - start_time) > timeout:
                     raise TimeoutError(f"Task result timeout after {timeout} seconds")

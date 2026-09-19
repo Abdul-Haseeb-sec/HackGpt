@@ -4,7 +4,7 @@ Unit tests for Advanced SOC Analysis Engine
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from security.soc_analysis import (
     get_soc_analyzer,
     AdvancedSOCAnalyzer,
@@ -13,6 +13,10 @@ from security.soc_analysis import (
     NormalizedLogEntry,
     IOCResult,
 )
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def test_get_soc_analyzer():
@@ -137,7 +141,7 @@ def test_correlation_engine():
 
     # 1. Simulate Brute force logs
     entries = []
-    now = datetime.utcnow()
+    now = _utc_now()
     for idx in range(10):
         entries.append(NormalizedLogEntry(
             timestamp=now - timedelta(seconds=idx * 10),
@@ -175,7 +179,7 @@ def test_anomaly_detection():
 
     # Create normal baseline logs (low volume, few errors)
     entries = []
-    now = datetime.utcnow()
+    now = _utc_now()
     for idx in range(20):
         # Evenly spread over 4 hours
         ts = now - timedelta(hours=idx % 4, minutes=idx % 60)
@@ -219,7 +223,7 @@ def test_anomaly_detection():
 def test_full_analysis_report():
     """Test full analysis pipeline integration and output structure."""
     analyzer = get_soc_analyzer()
-    now = datetime.utcnow()
+    now = _utc_now()
     
     # Combined attack scenario: ssh brute force + web sql injection + powershell reverse shell
     raw_logs = f"""
@@ -294,7 +298,7 @@ def test_siem_connectors_mock():
         source_events=[],
         iocs=[],
         mitre_mappings=[],
-        timestamp=datetime.datetime.utcnow()
+        timestamp=_utc_now()
     )
     success, msg = splunk.forward_alert(alert)
     assert success is True
@@ -370,7 +374,7 @@ def test_siem_manager():
         source_events=[],
         iocs=[],
         mitre_mappings=[],
-        timestamp=datetime.datetime.utcnow()
+        timestamp=_utc_now()
     )
     forward_results = manager.forward_alert_to_all(alert)
     assert forward_results["splunk"][0] is True

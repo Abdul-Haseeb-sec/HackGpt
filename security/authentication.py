@@ -10,6 +10,7 @@ import jwt
 import bcrypt
 import ldap3
 import logging
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
@@ -122,8 +123,19 @@ class ComplianceAuditLogger:
         self.db = get_db_manager()
         self.logger = logging.getLogger('audit')
         
-        # Setup file logging for audit trail
-        audit_handler = logging.FileHandler('/var/log/hackgpt/audit.log')
+        # Setup file logging for audit trail with fallback
+        audit_log_path = os.getenv('AUDIT_LOG_FILE', '/var/log/hackgpt/audit.log')
+        audit_file = Path(audit_log_path)
+        try:
+            audit_file.parent.mkdir(parents=True, exist_ok=True)
+            audit_handler = logging.FileHandler(str(audit_file))
+        except (OSError, PermissionError):
+            try:
+                fallback_dir = Path.cwd() / 'logs'
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                audit_handler = logging.FileHandler(str(fallback_dir / 'audit.log'))
+            except (OSError, PermissionError):
+                audit_handler = logging.StreamHandler()
         audit_formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )

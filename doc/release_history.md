@@ -5,6 +5,67 @@ This document logs the release updates, bug fixes, and feature integrations for 
 
 ---
 
+> [!IMPORTANT]
+> ### 💖 Critical Notice: Project Sponsorship, Donations & Funding Required
+> HackGPT Enterprise is an independent, community-driven AI security assessment framework. Maintaining cutting-edge penetration testing tools, supporting multi-provider AI model integrations, and sustaining security research infrastructure requires continuous resources. **We urgently require funds, donations, and sponsorships to maintain and advance this project.**
+>
+> **Please consider donating to support HackGPT development!**
+> - For sponsorships, grants, enterprise partnerships, or direct donation inquiries, contact the creator directly at: **yashabalam707@gmail.com**
+> - View full donation channels and guidelines in [DONATE.md](../DONATE.md).
+
+---
+
+## 🚀 Version 2026.09.19
+
+*Release Date: September 19, 2026*
+
+We are thrilled to announce **HackGPT Enterprise Version 2026.09.19**! This major release delivers dynamic multi-provider AI auto-fetching, frontier model registry expansion (`gpt-astra`, `gpt-6-astra`, `claude-3.7-sonnet`, `gemini-2.0`, `o1`, `deepseek-r1-zero`), custom routing gateways (including OpenRouter overrides and dedicated 9B task dispatchers), and comprehensive stability and bug fixes across the platform.
+
+### 🌟 What's New in Version 2026.09.19
+
+#### 1. Dynamic Multi-Provider Remote Model Auto-Fetching
+* **Live Remote Discovery Across 9+ Providers**: Introduced the `fetch_remote_models()` provider abstraction engine and dynamic registry synchronization:
+  * **OpenAI**: Live discovery via `client.models.list()` or `/v1/models` endpoint for instant access to latest OpenAI releases.
+  * **Anthropic (Claude)**: Direct querying of `https://api.anthropic.com/v1/models` with API key & versioning, with fallback to latest Claude frontier catalog (`claude-3-7-sonnet`, `claude-3-5-sonnet`, `claude-3-opus`).
+  * **Google Gemini**: Dynamic discovery via Google Generative Language API (`/models?key=...`), pulling model limits, context windows, and multimodal capabilities.
+  * **DeepSeek**: Real-time querying of DeepSeek models (`deepseek-chat`, `deepseek-reasoner` R1, and `deepseek-r1-zero`).
+  * **GLM (Zhipu AI)**: Real-time query support for BigModel GLM endpoints and frontier models (`glm-4-plus`, `glm-4-air`, `glm-4-flash`, `glm-4-long`, `codegeex-4`, `glm-zero-preview`).
+  * **Local Ollama**: Automatic inspection of locally pulled models via `/api/tags`.
+  * **OpenRouter Aggregator**: Live model discovery across hundreds of upstream endpoints via `/models`.
+  * **9B Router & Custom Gateways**: Automated inspection of custom router `/models` endpoints.
+* **Dynamic Model Catalog & Normalizer (`ai_engine/model_registry.py`)**:
+  * `DYNAMIC_MODEL_CATALOG`: Real-time runtime store for discovered models.
+  * `fetch_all_provider_models()`: Automated discovery across all or specified providers with caching and fallback.
+  * `normalize_provider()`: Robust provider alias resolution supporting flexible strings (`'openai'`, `'claude'`, `'anthropic'`, `'gemini'`, `'google'`, `'deepseek'`, `'glm'`, `'zhipu'`, `'openrouter'`, `'9brouter'`, `'custom'`).
+
+#### 2. Frontier AI Model Catalog Expansion
+* Added official support, token windows, and tool-calling parameters for:
+  * **GPT Astra** (`gpt-astra`) & **GPT-6 Astra** (`gpt-6-astra`)
+  * **Claude 3.7 Sonnet** (`claude-3.7-sonnet`)
+  * **Google Gemini 2.0 Flash & Pro** (`gemini-2.0-flash`, `gemini-2.0-pro`)
+  * **OpenAI o1 & o1-mini** (`o1`, `o1-mini`)
+  * **DeepSeek R1 Zero** (`deepseek-r1-zero`)
+
+#### 3. Custom Routers & Intelligent Task Dispatching
+* **9B Router (`9brouter/*`)**: Specialized client (`NineBRouterProvider`) for 9B parameter task and exploitation routers (e.g. Qwen 2.5 9B, Gemma 2 9B, Llama 3.1 9B) with OpenAI SDK integration and raw HTTP failover.
+* **OpenRouter Custom Endpoints (`OPENROUTER_BASE_URL`)**: Configurable base URL overrides for private OpenRouter proxies and enterprise gateways.
+* **Custom Router Gateway (`custom_router/*`, `custom/*`)**: Generic client (`CustomRouterProvider`) allowing routing to any internal OpenAI-compatible reverse proxy, vLLM, LiteLLM, or Portkey gateway.
+* **Dynamic Routing Prefixes**: Seamless on-the-fly resolution for models prefixed with `openrouter/`, `9brouter/`, `custom_router/`, or `custom/`.
+
+#### 4. Enterprise CLI & Interactive Management
+* Added `--model`, `--provider`, and `--custom-route` CLI options.
+* Added `--fetch-models` to query and register live models from configured providers on startup.
+* Added `--list-models` to print full formatted tables of cataloged and discovered models.
+* Integrated automated model discovery into interactive configuration menu option **`11`** (`configure_ai_engine`).
+
+#### 5. Platform Hardening & Bug Fixes
+* Fixed database session lifecycle management in PostgreSQL/SQLite adapters.
+* Resolved task concurrency handling in Celery/ParallelProcessor pipelines.
+* Corrected IOC pattern extraction for edge-case RFC IPv6 and domain representations in the SOC analysis engine.
+* Added safe error handling and resilient fallbacks during network timeouts and offline execution.
+
+---
+
 ## 🚀 Version 2026.07.beta.4
 
 We are excited to announce the release of **HackGPT Enterprise Version 2026.07.beta.4**! This release introduces the Advanced SOC (Security Operations Center) Analysis Engine, native SIEM Integrations, and expanded Threat Model compliance mapping to include the latest OWASP Top 10 guidelines and major 2024–2026 CVE detection rules.

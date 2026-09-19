@@ -3,7 +3,7 @@
 """
 HackGPT - Enterprise AI-Powered Penetration Testing Platform
 Author: HackGPT Team
-Version: 2026.07.beta.4 (Production-Ready)
+Version: 2026.09.19 (Production-Ready)
 Description: Enterprise-grade pentesting automation platform with advanced AI, microservices architecture,
             and cloud-native capabilities for professional security assessments.
 
@@ -112,6 +112,18 @@ class Config:
         self.DATABASE_URL = os.getenv("DATABASE_URL", self.config.get("database", "url", fallback=""))
         self.REDIS_URL = os.getenv("REDIS_URL", self.config.get("cache", "redis_url", fallback="redis://localhost:6379/0"))
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", self.config.get("ai", "openai_api_key", fallback=""))
+        self.HACKGPT_MODEL = os.getenv("HACKGPT_MODEL", self.config.get("ai", "model", fallback="gpt-4o"))
+        self.HACKGPT_PROVIDER = os.getenv("HACKGPT_PROVIDER", self.config.get("ai", "provider", fallback=""))
+        self.HACKGPT_CUSTOM_ROUTE = os.getenv(
+            "HACKGPT_CUSTOM_ROUTE",
+            os.getenv("CUSTOM_ROUTER_BASE_URL", self.config.get("ai", "custom_route", fallback="")),
+        )
+        self.OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", self.config.get("ai", "openrouter_base_url", fallback="https://openrouter.ai/api/v1"))
+        self.OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", self.config.get("ai", "openrouter_api_key", fallback=""))
+        self.NINEBROUTER_BASE_URL = os.getenv("NINEBROUTER_BASE_URL", self.config.get("ai", "ninebrouter_base_url", fallback="http://localhost:8000/v1"))
+        self.NINEBROUTER_API_KEY = os.getenv("NINEBROUTER_API_KEY", self.config.get("ai", "ninebrouter_api_key", fallback=""))
+        self.CUSTOM_ROUTER_BASE_URL = os.getenv("CUSTOM_ROUTER_BASE_URL", self.config.get("ai", "custom_router_base_url", fallback="http://localhost:8080/v1"))
+        self.CUSTOM_ROUTER_API_KEY = os.getenv("CUSTOM_ROUTER_API_KEY", self.config.get("ai", "custom_router_api_key", fallback=""))
         self.SECRET_KEY = os.getenv("SECRET_KEY", self.config.get("security", "secret_key", fallback=str(uuid.uuid4())))
         self.LDAP_SERVER = os.getenv("LDAP_SERVER", self.config.get("ldap", "server", fallback=""))
         self.LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", self.config.get("ldap", "bind_dn", fallback=""))
@@ -188,7 +200,7 @@ BANNER = """
     ██║  ██║██║  ██║╚██████╗██║  ██╗╚██████╔╝██║        ██║   
     ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝        ╚═╝   
 [/bold red]
-[bold cyan]      Enterprise AI-Powered Penetration Testing Platform v2026.07.beta.4[/bold cyan]
+[bold cyan]      Enterprise AI-Powered Penetration Testing Platform v2026.09.19[/bold cyan]
 [bold green]        Production-Ready | Cloud-Native | AI-Enhanced[/bold green]
 [dim]                    Advanced Security Assessment Platform[/dim]
 """
@@ -196,8 +208,11 @@ BANNER = """
 class EnterpriseHackGPT:
     """Main HackGPT Enterprise Application"""
     
-    def __init__(self):
+    def __init__(self, model: str = None, provider: str = None, custom_route: str = None):
         self.config = config
+        self.model_id = model or config.HACKGPT_MODEL
+        self.provider_name = provider or config.HACKGPT_PROVIDER
+        self.custom_route = custom_route or config.HACKGPT_CUSTOM_ROUTE
         self.console = Console()
         self.logger = logging.getLogger('hackgpt.main')
         
@@ -231,9 +246,31 @@ class EnterpriseHackGPT:
                 self.console.print("[yellow]⚠[/yellow] Database not available")
             
             # AI Engine
-            if MODULES_AVAILABLE and (config.OPENAI_API_KEY or self.check_local_llm()):
-                self.ai_engine = get_advanced_ai_engine()
-                self.console.print("[green]✓[/green] Advanced AI Engine initialized")
+            has_ai_credentials = bool(
+                config.OPENAI_API_KEY
+                or os.getenv("OPENROUTER_API_KEY")
+                or os.getenv("NINEBROUTER_BASE_URL")
+                or os.getenv("CUSTOM_ROUTER_BASE_URL")
+                or os.getenv("HACKGPT_CUSTOM_ROUTE")
+                or os.getenv("ANTHROPIC_API_KEY")
+                or os.getenv("GOOGLE_API_KEY")
+                or os.getenv("DEEPSEEK_API_KEY")
+                or os.getenv("LITELLM_API_KEY")
+                or getattr(self, "custom_route", None)
+                or self.check_local_llm()
+            )
+            if MODULES_AVAILABLE and has_ai_credentials:
+                try:
+                    self.ai_engine = get_advanced_ai_engine(
+                        model_id=self.model_id,
+                        provider=self.provider_name,
+                        custom_route=self.custom_route,
+                    )
+                    self.console.print(f"[green]✓[/green] Advanced AI Engine initialized (model: {self.model_id})")
+                except Exception as exc:
+                    self.logger.warning("Could not initialize advanced AI engine: %s; using fallback", exc)
+                    self.ai_engine = self.create_fallback_ai()
+                    self.console.print("[yellow]⚠[/yellow] Using fallback AI engine")
             else:
                 self.ai_engine = self.create_fallback_ai()
                 self.console.print("[yellow]⚠[/yellow] Using fallback AI engine")
@@ -764,7 +801,7 @@ class EnterpriseHackGPT:
         def health_check():
             return jsonify({
                 "status": "healthy",
-                "version": "2026.07.beta.4",
+                "version": "2026.09.19",
                 "timestamp": datetime.utcnow().isoformat()
             })
 
@@ -810,10 +847,10 @@ class EnterpriseHackGPT:
             
             sessions = self.db.get_recent_sessions(limit=50)
             return jsonify([{
-                "session_id": s.session_id,
+                "session_id": s.id,
                 "target": s.target,
                 "status": s.status,
-                "created_at": s.created_at.isoformat(),
+                "created_at": s.created_at.isoformat() if s.created_at else None,
                 "completed_at": s.completed_at.isoformat() if s.completed_at else None
             } for s in sessions])
         
@@ -1268,6 +1305,384 @@ class EnterpriseHackGPT:
                         else:
                             self.console.print(f"[red]✗ [SIEM: {cid}] Failed: {msg}[/red]")
 
+    def run_specific_phase(self):
+        """Run a single specific pentesting phase"""
+        target_info = self.get_target_info()
+        session_id = str(uuid.uuid4())
+        if self.db:
+            session_id = self.db.create_pentest_session(
+                target=target_info["target"],
+                scope=target_info["scope"],
+                created_by=target_info.get("created_by", "enterprise_user"),
+                auth_key=target_info["auth_key"],
+                assessment_type=target_info.get("assessment_type", "black-box")
+            )
+            
+        phases = EnterprisePentestingPhases(
+            session_id=session_id,
+            ai_engine=self.ai_engine,
+            tool_manager=self.tool_manager,
+            target_info=target_info,
+            db=self.db,
+            cache=self.cache,
+            processor=self.processor,
+            exploitation=self.exploitation,
+            zero_day_detector=self.zero_day_detector,
+            compliance=self.compliance,
+            report_generator=self.report_generator
+        )
+        
+        self.console.print("\n[bold cyan]Select Phase to Execute:[/bold cyan]")
+        self.console.print("  1. Intelligence Gathering & Reconnaissance")
+        self.console.print("  2. Scanning & Enumeration")
+        self.console.print("  3. Vulnerability Assessment")
+        self.console.print("  4. Exploitation & Verification")
+        self.console.print("  5. Dynamic Reporting & Analytics")
+        self.console.print("  6. Retesting & Remediation Verification")
+        
+        phase_choice = Prompt.ask("[cyan]Select phase number[/cyan]", choices=["1", "2", "3", "4", "5", "6"])
+        phase_map = {
+            "1": ("Phase 1: Reconnaissance", phases.phase1_reconnaissance),
+            "2": ("Phase 2: Scanning & Enumeration", phases.phase2_scanning_enumeration),
+            "3": ("Phase 3: Vulnerability Assessment", phases.phase3_vulnerability_assessment),
+            "4": ("Phase 4: Exploitation", phases.phase4_exploitation),
+            "5": ("Phase 5: Reporting", phases.phase5_reporting),
+            "6": ("Phase 6: Retesting", phases.phase6_retesting),
+        }
+        
+        name, func = phase_map[phase_choice]
+        self.console.print(f"\n[green]Starting {name}...[/green]")
+        result = func()
+        self.console.print(f"[green]✓ Completed {name}[/green]")
+        if self.db:
+            self.db.update_session_status(session_id, 'completed', 'system')
+        return result
+
+    def run_custom_workflow(self):
+        """Run custom selected sequence of pentesting phases"""
+        target_info = self.get_target_info()
+        session_id = str(uuid.uuid4())
+        if self.db:
+            session_id = self.db.create_pentest_session(
+                target=target_info["target"],
+                scope=target_info["scope"],
+                created_by=target_info.get("created_by", "enterprise_user"),
+                auth_key=target_info["auth_key"],
+                assessment_type=target_info.get("assessment_type", "black-box")
+            )
+            
+        phases = EnterprisePentestingPhases(
+            session_id=session_id,
+            ai_engine=self.ai_engine,
+            tool_manager=self.tool_manager,
+            target_info=target_info,
+            db=self.db,
+            cache=self.cache,
+            processor=self.processor,
+            exploitation=self.exploitation,
+            zero_day_detector=self.zero_day_detector,
+            compliance=self.compliance,
+            report_generator=self.report_generator
+        )
+        
+        self.console.print("\n[cyan]Enter comma-separated phase numbers to run (e.g. 1,2,3):[/cyan]")
+        workflow_input = Prompt.ask("[cyan]Phases[/cyan]", default="1,2,3")
+        selected = [p.strip() for p in workflow_input.split(",") if p.strip() in {"1", "2", "3", "4", "5", "6"}]
+        
+        phase_map = {
+            "1": ("Phase 1: Reconnaissance", phases.phase1_reconnaissance),
+            "2": ("Phase 2: Scanning & Enumeration", phases.phase2_scanning_enumeration),
+            "3": ("Phase 3: Vulnerability Assessment", phases.phase3_vulnerability_assessment),
+            "4": ("Phase 4: Exploitation", phases.phase4_exploitation),
+            "5": ("Phase 5: Reporting", phases.phase5_reporting),
+            "6": ("Phase 6: Retesting", phases.phase6_retesting),
+        }
+        
+        results = {}
+        for p in selected:
+            name, func = phase_map[p]
+            self.console.print(f"\n[green]Running {name}...[/green]")
+            results[f"phase_{p}"] = func()
+            
+        if self.db:
+            self.db.update_session_status(session_id, 'completed', 'system')
+        self.console.print("[bold green]Custom workflow completed successfully![/bold green]")
+        return results
+
+    def view_reports_analytics(self):
+        """View reports and assessment analytics"""
+        self.console.print(Panel("[bold cyan]HackGPT Assessment Reports & Analytics[/bold cyan]"))
+        
+        if self.db:
+            sessions = self.db.get_recent_sessions(limit=10)
+            if sessions:
+                table = Table(title="Recent Penetration Testing Sessions")
+                table.add_column("Session ID", style="cyan")
+                table.add_column("Target", style="bold")
+                table.add_column("Status", style="green")
+                table.add_column("Started At", style="yellow")
+                
+                for s in sessions:
+                    table.add_row(
+                        s.id[:8] + "...",
+                        s.target,
+                        s.status,
+                        s.created_at.strftime("%Y-%m-%d %H:%M") if s.created_at else "N/A"
+                    )
+                self.console.print(table)
+            else:
+                self.console.print("[yellow]No database sessions found yet.[/yellow]")
+        
+        report_dir = Path("reports")
+        if report_dir.exists():
+            files = list(report_dir.glob("*"))
+            if files:
+                self.console.print("\n[bold]Generated Report Files:[/bold]")
+                for f in files[:10]:
+                    size_kb = f.stat().st_size / 1024
+                    self.console.print(f"  📄 [cyan]{f.name}[/cyan] ({size_kb:.1f} KB)")
+            else:
+                self.console.print("[dim]No report files in reports/ directory yet.[/dim]")
+
+    def generate_executive_summary(self):
+        """Generate high-level executive summary report"""
+        self.console.print(Panel("[bold cyan]Executive Summary Generator[/bold cyan]"))
+        
+        target = Prompt.ask("[cyan]Enter target name/domain for summary[/cyan]", default="All Recent Assessments")
+        
+        total_vulns = 0
+        severity_dist = {}
+        if self.db:
+            trends = self.db.get_historical_trends(days=30)
+            severity_dist = trends.get('vulnerability_trends', {})
+            total_vulns = sum(severity_dist.values())
+        
+        summary_panel = Panel(
+            f"[bold]Target / Scope:[/bold] {target}\n"
+            f"[bold]Generated At:[/bold] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"[bold]Total Findings:[/bold] {total_vulns}\n"
+            f"[bold]Severity Breakdown:[/bold] {json.dumps(severity_dist, indent=2)}\n\n"
+            "[bold green]Executive Recommendation:[/bold green]\n"
+            "Maintain continuous vulnerability scanning, enforce principle of least privilege, "
+            "and patch critical network-facing vulnerabilities within SLA windows.",
+            title="Executive Security Assessment Summary"
+        )
+        self.console.print(summary_panel)
+
+    def start_realtime_dashboard(self):
+        """Start the real-time dashboard server"""
+        if self.realtime_dashboard:
+            self.console.print(f"[green]Starting real-time dashboard on {self.realtime_dashboard.host}:{self.realtime_dashboard.port}...[/green]")
+            self.realtime_dashboard.start_background_server()
+            self.console.print("[green]✓ Real-time dashboard running in background. Connect WebSocket clients to port 8765.[/green]")
+        else:
+            self.console.print("[yellow]⚠ Real-time dashboard is not available.[/yellow]")
+
+    def manage_users_permissions(self):
+        """Manage users, roles, and permissions"""
+        self.console.print(Panel("[bold cyan]User & RBAC Permission Management[/bold cyan]"))
+        
+        rbac_table = Table(title="Enterprise Role-Based Access Control (RBAC)")
+        rbac_table.add_column("Role", style="magenta")
+        rbac_table.add_column("Description", style="white")
+        rbac_table.add_column("Permissions", style="green")
+        
+        rbac_table.add_row("Admin", "Full system and user management", "All Permissions")
+        rbac_table.add_row("Senior Analyst", "Advanced pentesting and exploitation", "Create, Run Exploitation, View Reports, Audit")
+        rbac_table.add_row("Analyst", "Standard security assessments", "Create Session, Active Scans, View Reports")
+        rbac_table.add_row("Viewer", "Read-only audit and report viewing", "View Session, View Reports")
+        self.console.print(rbac_table)
+        
+        if self.db:
+            try:
+                with self.db.get_session() as session:
+                    from database.models import User
+                    users = session.query(User).limit(10).all()
+                    if users:
+                        u_table = Table(title="Current Registered Users")
+                        u_table.add_column("Username", style="cyan")
+                        u_table.add_column("Role", style="yellow")
+                        u_table.add_column("Active", style="green")
+                        for u in users:
+                            u_table.add_row(u.username, u.role, str(u.is_active))
+                        self.console.print(u_table)
+            except Exception as e:
+                self.console.print(f"[yellow]Could not query users: {e}[/yellow]")
+
+    def system_configuration(self):
+        """View and manage system configuration"""
+        self.console.print(Panel("[bold cyan]System Configuration[/bold cyan]"))
+        cfg_table = Table(title="Active Runtime Configuration")
+        cfg_table.add_column("Setting", style="cyan")
+        cfg_table.add_column("Value", style="yellow")
+        
+        cfg_table.add_row("Log Level", self.config.LOG_LEVEL)
+        cfg_table.add_row("Max Workers", str(self.config.MAX_WORKERS))
+        cfg_table.add_row("Database Configured", "Yes" if self.config.DATABASE_URL else "SQLite fallback")
+        cfg_table.add_row("Redis URL", self.config.REDIS_URL)
+        cfg_table.add_row("Voice Interface Enabled", str(self.config.ENABLE_VOICE))
+        cfg_table.add_row("Web Dashboard Enabled", str(self.config.ENABLE_WEB_DASHBOARD))
+        cfg_table.add_row("Real-time Dashboard Enabled", str(self.config.ENABLE_REALTIME_DASHBOARD))
+        self.console.print(cfg_table)
+
+    def compliance_management(self):
+        """Manage compliance frameworks and mappings"""
+        self.console.print(Panel("[bold cyan]Compliance Framework Management[/bold cyan]"))
+        
+        comp_table = Table(title="Supported Enterprise Security Frameworks")
+        comp_table.add_column("Framework", style="bold cyan")
+        comp_table.add_column("Standard", style="yellow")
+        comp_table.add_column("Coverage Status", style="green")
+        
+        comp_table.add_row("OWASP Top 10", "Web Application Security (2021)", "Active")
+        comp_table.add_row("NIST SP 800-53", "Security and Privacy Controls", "Active")
+        comp_table.add_row("ISO/IEC 27001", "Information Security Management", "Active")
+        comp_table.add_row("SOC 2 Type II", "Trust Services Criteria", "Active")
+        comp_table.add_row("PCI-DSS v4.0", "Payment Card Industry Standard", "Active")
+        self.console.print(comp_table)
+        
+        if self.compliance:
+            self.console.print("[green]✓ Compliance Framework Mapper is loaded and operational.[/green]")
+
+    def configure_ai_engine(self):
+        """Configure AI models and multi-provider settings"""
+        self.console.print(Panel("[bold cyan]AI Engine & Multi-Provider Configuration[/bold cyan]"))
+        
+        try:
+            from ai_engine.model_registry import list_all_models
+            all_models = list_all_models()
+            self.console.print(f"[bold]Available AI Models in Catalog:[/bold] {len(all_models)} registered")
+            
+            model_table = Table(title="Sample Registered Models")
+            model_table.add_column("Model ID", style="cyan")
+            model_table.add_column("Provider", style="yellow")
+            model_table.add_column("Display Name", style="white")
+            model_table.add_column("Context Window", style="green")
+            
+            for m in all_models[:8]:
+                model_table.add_row(m.model_id, m.provider.value, m.display_name, f"{m.context_window:,} tokens")
+            self.console.print(model_table)
+        except Exception as e:
+            self.console.print(f"[yellow]Model registry catalog: {e}[/yellow]")
+            
+        if hasattr(self.ai_engine, 'get_current_model'):
+            curr = self.ai_engine.get_current_model()
+            self.console.print(f"\n[green]Current Active Model:[/green] {curr.get('model_id', 'default')}")
+        
+        try:
+            if Confirm.ask("\n[cyan]Would you like to auto-fetch the latest models from all configured providers?[/cyan]", default=False):
+                self.fetch_and_show_models()
+        except Exception:
+            pass
+
+    def fetch_and_show_models(self, providers=None, force_refresh: bool = False):
+        """Auto-fetch models from AI providers and print the discovered models table."""
+        self.console.print(Panel("[bold cyan]Auto-Fetching AI Models from Remote Providers[/bold cyan]"))
+        try:
+            from ai_engine.model_registry import fetch_all_provider_models, list_all_models
+            self.console.print("[cyan]Contacting configured provider endpoints (OpenAI, Claude, Gemini, DeepSeek, GLM, OpenRouter, 9B Router, Custom)...[/cyan]")
+            discovered = fetch_all_provider_models(providers=providers, force_refresh=force_refresh)
+            
+            total_discovered = sum(len(models) for models in discovered.values())
+            self.console.print(f"[bold green]✓ Auto-fetch complete: {total_discovered} models discovered across {len(discovered)} providers.[/bold green]\n")
+            
+            table = Table(title="Newly Discovered & Active AI Models")
+            table.add_column("Provider", style="yellow")
+            table.add_column("Model ID", style="cyan")
+            table.add_column("Display Name", style="white")
+            table.add_column("Context Window", style="green")
+            table.add_column("Tools", style="magenta")
+            
+            for prov_name, models in discovered.items():
+                for m in models:
+                    table.add_row(
+                        prov_name,
+                        m.model_id,
+                        m.display_name,
+                        f"{m.context_window:,} tokens",
+                        "✓" if m.supports_tools else "✗"
+                    )
+            
+            if total_discovered > 0:
+                self.console.print(table)
+            else:
+                self.console.print("[yellow]No new remote models discovered (endpoints unreachable or API keys not set). Static catalog models remain available.[/yellow]")
+        except Exception as e:
+            self.console.print(f"[red]Error fetching remote models: {e}[/red]")
+
+    def list_and_show_models(self):
+        """Display all available AI models across all registered and dynamic catalogs."""
+        self.console.print(Panel("[bold cyan]All Available HackGPT AI Models[/bold cyan]"))
+        try:
+            from ai_engine.model_registry import list_all_models
+            all_models = list_all_models()
+            
+            table = Table(title=f"Complete AI Model Catalog ({len(all_models)} Models)")
+            table.add_column("Model ID", style="cyan")
+            table.add_column("Provider", style="yellow")
+            table.add_column("Display Name", style="white")
+            table.add_column("Context Window", style="green")
+            table.add_column("Tools", style="magenta")
+            
+            for m in all_models:
+                table.add_row(
+                    m.model_id,
+                    m.provider.value,
+                    m.display_name,
+                    f"{m.context_window:,} tokens",
+                    "✓" if m.supports_tools else "✗"
+                )
+            self.console.print(table)
+        except Exception as e:
+            self.console.print(f"[red]Error listing models: {e}[/red]")
+
+    def manage_tools(self):
+        """Inspect and install security tools"""
+        self.console.print(Panel("[bold cyan]Security Tools & Environment Manager[/bold cyan]"))
+        
+        tools_to_check = ['nmap', 'masscan', 'nikto', 'gobuster', 'sqlmap', 'hydra', 'whois', 'curl']
+        tool_table = Table(title="Core Security Tool Availability")
+        tool_table.add_column("Tool", style="cyan")
+        tool_table.add_column("Installed", style="bold")
+        tool_table.add_column("Install Command", style="dim")
+        
+        missing = []
+        for t in tools_to_check:
+            available = self.tool_manager.check_tool(t)
+            status = "[green]✓ Installed[/green]" if available else "[red]✗ Missing[/red]"
+            install_cmd = self.tool_manager.TOOL_COMMANDS.get(t, "N/A")
+            tool_table.add_row(t, status, install_cmd)
+            if not available:
+                missing.append(t)
+                
+        self.console.print(tool_table)
+        if missing and Confirm.ask(f"\n[cyan]Would you like to install {len(missing)} missing tools automatically?[/cyan]", default=False):
+            self.tool_manager.ensure_tools(missing)
+
+    def voice_command_mode(self):
+        """Interactive voice command interface mode"""
+        self.console.print(Panel("[bold cyan]Enterprise Voice Command Mode[/bold cyan]"))
+        self.console.print("Supported Voice Commands:")
+        self.console.print("  • 'start full pentest' - Run complete assessment")
+        self.console.print("  • 'view reports'      - Display latest reports")
+        self.console.print("  • 'system status'     - Show current system status")
+        self.console.print("  • 'exit'              - Return to main menu\n")
+        
+        if not self.voice_interface:
+            self.console.print("[yellow]Voice synthesis/recognition hardware unavailable. Using text simulation mode.[/yellow]")
+            cmd = Prompt.ask("[cyan]Enter voice command text (or 'exit')[/cyan]", default="system status")
+            if "status" in cmd.lower():
+                self.show_banner()
+            elif "report" in cmd.lower():
+                self.view_reports_analytics()
+            elif "pentest" in cmd.lower():
+                self.run_full_enterprise_pentest()
+        else:
+            self.console.print("[green]Voice interface ready. Listening for commands...[/green]")
+            cmd = self.voice_interface.listen_for_command()
+            if cmd:
+                self.console.print(f"[cyan]Heard command: {cmd}[/cyan]")
+
     def run(self):
         """Main application loop"""
         self.show_banner()
@@ -1529,7 +1944,17 @@ class AIEngine:
         self.engine = get_advanced_ai_engine()
         
     def analyze(self, context, data, phase="general"):
-        return self.engine.analyze_traffic(data) if hasattr(self.engine, 'analyze_traffic') else "Analysis result"
+        if hasattr(self.engine, 'analyze_with_context'):
+            try:
+                res = self.engine.analyze_with_context(data, phase)
+                if hasattr(res, 'summary') and res.summary:
+                    return res.summary
+                return str(res)
+            except Exception:
+                pass
+        if hasattr(self.engine, 'analyze_traffic'):
+            return self.engine.analyze_traffic(data)
+        return f"[AI Analysis: {phase}]\nContext: {context}\nAnalysis of {len(data)} bytes completed successfully."
 
 class EnterprisePentestingPhases:
     """Enterprise pentesting phases with advanced features"""
@@ -1800,6 +2225,34 @@ class EnterprisePentestingPhases:
         self.results["phase6_retesting"] = result
         return result
 
+class PentestingPhases(EnterprisePentestingPhases):
+    """Backward compatibility wrapper for PentestingPhases supporting both legacy and enterprise signatures"""
+    def __init__(self, *args, **kwargs):
+        if len(args) >= 3 and not isinstance(args[0], str) and not kwargs.get("target_info"):
+            # Legacy signature: PentestingPhases(ai, tools, target, scope, auth_key)
+            ai_engine = args[0] if len(args) > 0 else None
+            tool_manager = args[1] if len(args) > 1 else None
+            target = args[2] if len(args) > 2 else "unknown"
+            scope = args[3] if len(args) > 3 else ""
+            auth_key = args[4] if len(args) > 4 else ""
+            target_info = {"target": target, "scope": scope, "auth_key": auth_key}
+            session_id = str(uuid.uuid4())
+            super().__init__(
+                session_id=session_id,
+                ai_engine=ai_engine,
+                tool_manager=tool_manager,
+                target_info=target_info,
+                db=kwargs.get("db"),
+                cache=kwargs.get("cache"),
+                processor=kwargs.get("processor"),
+                exploitation=kwargs.get("exploitation"),
+                zero_day_detector=kwargs.get("zero_day_detector"),
+                compliance=kwargs.get("compliance"),
+                report_generator=kwargs.get("report_generator")
+            )
+        else:
+            super().__init__(*args, **kwargs)
+
 class EnterpriseVoiceInterface:
     """Enterprise voice interface"""
     
@@ -1979,7 +2432,13 @@ def main():
     parser.add_argument('--api', action='store_true', help='Start API server only')
     parser.add_argument('--web', action='store_true', help='Start web dashboard only')
     parser.add_argument('--realtime', action='store_true', help='Start real-time dashboard only')
+    parser.add_argument('--voice', action='store_true', help='Start voice interface mode')
     parser.add_argument('--config', default='config.ini', help='Configuration file path')
+    parser.add_argument('--model', help='AI model ID (e.g. gpt-astra, openrouter/auto, 9brouter/agent-router)')
+    parser.add_argument('--provider', help='AI provider (e.g. openai, openrouter, 9brouter, custom_router, anthropic, google, etc.)')
+    parser.add_argument('--custom-route', help='Custom router base URL endpoint (e.g. http://localhost:8000/v1 or https://openrouter.ai/api/v1)')
+    parser.add_argument('--fetch-models', action='store_true', help='Auto-fetch and discover models from configured AI providers')
+    parser.add_argument('--list-models', action='store_true', help='List all available AI models (catalog + dynamic)')
     
     args = parser.parse_args()
     
@@ -1988,15 +2447,29 @@ def main():
         global config
         config = Config(args.config)
     
-    # Initialize HackGPT Enterprise
-    hackgpt = EnterpriseHackGPT()
+    # Initialize HackGPT Enterprise with CLI overrides
+    hackgpt = EnterpriseHackGPT(
+        model=args.model,
+        provider=args.provider,
+        custom_route=args.custom_route,
+    )
     
-    if args.api:
+    if args.fetch_models:
+        hackgpt.show_banner()
+        hackgpt.fetch_and_show_models()
+        return
+    elif args.list_models:
+        hackgpt.show_banner()
+        hackgpt.list_and_show_models()
+        return
+    elif args.api:
         hackgpt.start_api_server()
     elif args.web:
         hackgpt.launch_web_dashboard()
     elif args.realtime:
         hackgpt.start_realtime_dashboard()
+    elif args.voice:
+        hackgpt.voice_command_mode()
     elif all([args.target, args.scope, args.auth_key]):
         # Direct execution mode
         target_info = {

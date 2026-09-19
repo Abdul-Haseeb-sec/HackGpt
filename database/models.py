@@ -25,6 +25,7 @@ class PentestSession(Base):
     completed_at = Column(DateTime)
     created_by = Column(String, nullable=False)
     auth_key_hash = Column(String, nullable=False)
+    assessment_type = Column(String, default='black-box')
     
     # Relationships
     vulnerabilities = relationship("Vulnerability", back_populates="session")

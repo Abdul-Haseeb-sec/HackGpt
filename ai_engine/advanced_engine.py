@@ -33,12 +33,17 @@ except ImportError as e:
 try:
     import openai
 except ImportError as e:
+    openai = None
     logging.warning(f"openai not available: {e}")
 
 try:
     from transformers import pipeline, AutoTokenizer, AutoModel
     import torch
 except ImportError as e:
+    pipeline = None
+    AutoTokenizer = None
+    AutoModel = None
+    torch = None
     logging.warning(f"transformers or torch not available: {e}")
 
 try:
@@ -46,6 +51,9 @@ try:
     from sklearn.cluster import KMeans
     from sklearn.metrics.pairwise import cosine_similarity
 except ImportError as e:
+    TfidfVectorizer = None
+    KMeans = None
+    cosine_similarity = None
     logging.warning(f"sklearn dependencies not available: {e}")
 
 from database import get_db_manager, AIContext
@@ -76,10 +84,11 @@ class PatternRecognizer:
     
     def __init__(self):
         self.patterns = self._load_vulnerability_patterns()
-        self.vectorizer = TfidfVectorizer(max_features=5000, stop_words='english')
+        self.vectorizer = TfidfVectorizer(max_features=5000, stop_words='english') if TfidfVectorizer else None
         self.kmeans = None
         self.pattern_vectors = None
-        self._initialize_ml_models()
+        if self.vectorizer is not None:
+            self._initialize_ml_models()
         
     def _load_vulnerability_patterns(self) -> List[VulnerabilityPattern]:
         """Load known vulnerability patterns"""
@@ -150,8 +159,18 @@ class PatternRecognizer:
     
     def detect_patterns(self, text: str) -> List[Tuple[VulnerabilityPattern, float]]:
         """Detect vulnerability patterns in text"""
-        if not self.pattern_vectors:
-            return []
+        if self.vectorizer is None or self.pattern_vectors is None or getattr(self.pattern_vectors, 'shape', [0])[0] == 0:
+            detected_patterns = []
+            text_lower = text.lower()
+            for pattern in self.patterns:
+                matches = sum(1 for ind in pattern.indicators if ind.lower() in text_lower)
+                if matches > 0:
+                    similarity = matches / len(pattern.indicators)
+                    confidence = similarity * pattern.confidence
+                    if confidence >= 0.2:
+                        detected_patterns.append((pattern, confidence))
+            detected_patterns.sort(key=lambda x: x[1], reverse=True)
+            return detected_patterns[:5]
             
         try:
             # Vectorize input text
@@ -406,13 +425,20 @@ class VulnerabilityCorrelator:
 class AdvancedAIEngine:
     """Advanced AI Engine with context awareness and ML capabilities"""
     
-    def __init__(self, session_id: str = None, model_id: str = None, provider: str = None):
+    def __init__(
+        self,
+        session_id: str = None,
+        model_id: str = None,
+        provider: str = None,
+        custom_route: str = None,
+    ):
         self.session_id = session_id
         self.api_key = os.getenv('OPENAI_API_KEY')
         
         # Multi-provider model selection
         self.model_id = model_id or os.getenv('HACKGPT_MODEL', os.getenv('OPENAI_MODEL', 'gpt-4o'))
         self.provider_name = provider or os.getenv('HACKGPT_PROVIDER', None)
+        self.custom_route = custom_route or os.getenv('HACKGPT_CUSTOM_ROUTE') or os.getenv('CUSTOM_ROUTER_BASE_URL')
         self.active_provider = None
         self.active_model_info = None
         
@@ -434,7 +460,9 @@ class AdvancedAIEngine:
         """Setup AI models with multi-provider support"""
         try:
             # Try to resolve the selected model via the provider factory
-            provider_instance, model_info = ProviderFactory.get_provider_for_model(self.model_id)
+            provider_instance, model_info = ProviderFactory.get_provider_for_model(
+                self.model_id, custom_route=self.custom_route
+            )
             if provider_instance.is_available():
                 self.active_provider = provider_instance
                 self.active_model_info = model_info
@@ -644,6 +672,9 @@ Format your response as clear, actionable insights for penetration testers.
             # Detect sections
             if "summary" in line.lower() and (":" in line or "#" in line):
                 current_section = "summary"
+                after_colon = line.split(":", 1)[1].strip() if ":" in line else ""
+                if after_colon:
+                    summary += after_colon + " "
                 continue
             elif "risk" in line.lower() and (":" in line or "#" in line):
                 current_section = "risk"
@@ -656,6 +687,17 @@ Format your response as clear, actionable insights for penetration testers.
                 continue
             elif "confidence" in line.lower() and (":" in line or "#" in line):
                 current_section = "confidence"
+                import re
+                match = re.search(r'(\d+\.?\d*)', line)
+                if match:
+                    try:
+                        raw_val = float(match.group(1))
+                        if raw_val > 1.0:
+                            confidence_score = min(raw_val / 100.0, 1.0)
+                        else:
+                            confidence_score = max(0.0, raw_val)
+                    except ValueError:
+                        pass
                 continue
             
             # Parse content based on current section
@@ -671,9 +713,11 @@ Format your response as clear, actionable insights for penetration testers.
                 match = re.search(r'(\d+\.?\d*)', line)
                 if match:
                     try:
-                        confidence_score = min(float(match.group(1)), 1.0)
-                        if confidence_score > 1.0:
-                            confidence_score = confidence_score / 10.0  # Handle percentages
+                        raw_val = float(match.group(1))
+                        if raw_val > 1.0:
+                            confidence_score = min(raw_val / 100.0, 1.0)
+                        else:
+                            confidence_score = max(0.0, raw_val)
                     except ValueError:
                         pass
         
@@ -793,12 +837,14 @@ Format your response as clear, actionable insights for penetration testers.
                 'context_window': self.active_model_info.context_window,
                 'supports_streaming': self.active_model_info.supports_streaming,
                 'supports_tools': self.active_model_info.supports_tools,
+                'custom_route': getattr(self, 'custom_route', None),
             }
         return {
             'model_id': self.model_id or os.getenv('OPENAI_MODEL', 'gpt-4o'),
             'display_name': 'Unknown',
-            'provider': 'openai' if self.api_key else 'local',
-            'local_mode': self.local_mode,
+            'provider': self.provider_name or ('openai' if getattr(self, 'api_key', None) else 'local'),
+            'local_mode': getattr(self, 'local_mode', False),
+            'custom_route': getattr(self, 'custom_route', None),
         }
     
     def list_available_models(self) -> List[Dict[str, Any]]:

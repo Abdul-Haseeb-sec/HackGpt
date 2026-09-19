@@ -16,10 +16,15 @@ __all__ = [
     "ModelProvider",
     "ModelInfo",
     "MODEL_CATALOG",
+    "DYNAMIC_MODEL_CATALOG",
     "get_models_by_provider",
     "get_model_info",
     "list_all_models",
     "get_available_providers",
+    "register_dynamic_model",
+    "clear_dynamic_models",
+    "fetch_all_provider_models",
+    "normalize_provider",
 ]
 
 
@@ -38,6 +43,8 @@ class ModelProvider(Enum):
     OPENROUTER = "openrouter"
     GLM = "glm"
     LITELLM = "litellm"
+    NINEBROUTER = "9brouter"
+    CUSTOM_ROUTER = "custom_router"
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +138,51 @@ MODEL_CATALOG: Dict[str, ModelInfo] = {
         context_window=200_000,
         description="Compact reasoning model balancing capability and efficiency.",
     ),
+    "gpt-astra": ModelInfo(
+        model_id="gpt-astra",
+        provider=ModelProvider.OPENAI,
+        display_name="GPT Astra",
+        max_tokens=32_768,
+        supports_tools=True,
+        context_window=256_000,
+        description="OpenAI's frontier GPT Astra model specialized in complex reasoning, cybersecurity analysis, and computer use.",
+    ),
+    "gpt-6-astra": ModelInfo(
+        model_id="gpt-6-astra",
+        provider=ModelProvider.OPENAI,
+        display_name="GPT-6 Astra",
+        max_tokens=32_768,
+        supports_tools=True,
+        context_window=256_000,
+        description="OpenAI GPT-6 Astra next-gen flagship model for autonomous penetration testing and deep multi-step security analysis.",
+    ),
+    "gpt-4.5-preview": ModelInfo(
+        model_id="gpt-4.5-preview",
+        provider=ModelProvider.OPENAI,
+        display_name="GPT-4.5 Preview",
+        max_tokens=16_384,
+        supports_tools=True,
+        context_window=128_000,
+        description="OpenAI's extensive knowledge model with deep world understanding and reasoning.",
+    ),
+    "o1": ModelInfo(
+        model_id="o1",
+        provider=ModelProvider.OPENAI,
+        display_name="o1",
+        max_tokens=100_000,
+        supports_tools=True,
+        context_window=200_000,
+        description="OpenAI o1 full reasoning model with extended chain-of-thought processing.",
+    ),
+    "o1-mini": ModelInfo(
+        model_id="o1-mini",
+        provider=ModelProvider.OPENAI,
+        display_name="o1-mini",
+        max_tokens=65_536,
+        supports_tools=True,
+        context_window=128_000,
+        description="Fast and cost-effective OpenAI reasoning model optimized for code and technical tasks.",
+    ),
 
     # ----- Anthropic -----------------------------------------------------
     "claude-sonnet-5": ModelInfo(
@@ -159,6 +211,15 @@ MODEL_CATALOG: Dict[str, ModelInfo] = {
         supports_tools=True,
         context_window=200_000,
         description="Fast and affordable Anthropic model for lightweight tasks.",
+    ),
+    "claude-3.7-sonnet": ModelInfo(
+        model_id="claude-3-7-sonnet-20250219",
+        provider=ModelProvider.ANTHROPIC,
+        display_name="Claude 3.7 Sonnet",
+        max_tokens=16_384,
+        supports_tools=True,
+        context_window=200_000,
+        description="Anthropic's hybrid model combining instantaneous response with extended thinking.",
     ),
 
     # ----- Google Gemini -------------------------------------------------
@@ -194,6 +255,24 @@ MODEL_CATALOG: Dict[str, ModelInfo] = {
         context_window=1_000_000,
         description="Fast Google model combining speed with large output capacity.",
     ),
+    "gemini-2.0-flash": ModelInfo(
+        model_id="gemini-2.0-flash",
+        provider=ModelProvider.GOOGLE,
+        display_name="Gemini 2.0 Flash",
+        max_tokens=8_192,
+        supports_tools=True,
+        context_window=1_000_000,
+        description="Next-generation multimodal model built for speed and agentic workflows.",
+    ),
+    "gemini-2.0-pro": ModelInfo(
+        model_id="gemini-2.0-pro-exp-02-05",
+        provider=ModelProvider.GOOGLE,
+        display_name="Gemini 2.0 Pro",
+        max_tokens=8_192,
+        supports_tools=True,
+        context_window=2_000_000,
+        description="Google's most powerful model for complex coding, reasoning, and world knowledge.",
+    ),
 
     # ----- DeepSeek ------------------------------------------------------
     "deepseek-r1": ModelInfo(
@@ -211,6 +290,15 @@ MODEL_CATALOG: Dict[str, ModelInfo] = {
         max_tokens=8_192,
         context_window=128_000,
         description="DeepSeek's general-purpose conversational model.",
+    ),
+    "deepseek-r1-zero": ModelInfo(
+        model_id="deepseek-reasoner",
+        provider=ModelProvider.DEEPSEEK,
+        display_name="DeepSeek Reasoner",
+        max_tokens=8_192,
+        supports_tools=True,
+        context_window=128_000,
+        description="DeepSeek's pure RL-trained reasoning model for algorithmic and logic-heavy security tasks.",
     ),
 
     # ----- GLM -----------------------------------------------------------
@@ -305,6 +393,79 @@ MODEL_CATALOG: Dict[str, ModelInfo] = {
         context_window=128_000,
         description="Automatic model routing via the OpenRouter aggregator.",
     ),
+    "openrouter/openai/gpt-astra": ModelInfo(
+        model_id="openai/gpt-astra",
+        provider=ModelProvider.OPENROUTER,
+        display_name="GPT Astra (via OpenRouter)",
+        max_tokens=32_768,
+        supports_tools=True,
+        context_window=256_000,
+        description="OpenAI GPT Astra routed through OpenRouter's API gateway.",
+    ),
+    "openrouter/anthropic/claude-3.7-sonnet": ModelInfo(
+        model_id="anthropic/claude-3-7-sonnet-20250219",
+        provider=ModelProvider.OPENROUTER,
+        display_name="Claude 3.7 Sonnet (via OpenRouter)",
+        max_tokens=16_384,
+        supports_tools=True,
+        context_window=200_000,
+        description="Anthropic Claude 3.7 Sonnet routed through OpenRouter.",
+    ),
+    "openrouter/deepseek/deepseek-r1": ModelInfo(
+        model_id="deepseek/deepseek-r1",
+        provider=ModelProvider.OPENROUTER,
+        display_name="DeepSeek R1 (via OpenRouter)",
+        max_tokens=8_192,
+        context_window=128_000,
+        description="DeepSeek R1 reasoning model routed through OpenRouter.",
+    ),
+    "openrouter/meta-llama/llama-3.3-70b-instruct": ModelInfo(
+        model_id="meta-llama/llama-3.3-70b-instruct",
+        provider=ModelProvider.OPENROUTER,
+        display_name="LLaMA 3.3 70B Instruct (via OpenRouter)",
+        max_tokens=4_096,
+        context_window=128_000,
+        description="Meta LLaMA 3.3 70B Instruct model routed through OpenRouter.",
+    ),
+
+    # ----- 9B Router (Intelligent Model & Task Dispatcher) -----------------
+    "9brouter/agent-router": ModelInfo(
+        model_id="agent-router-9b",
+        provider=ModelProvider.NINEBROUTER,
+        display_name="9B Agent Router",
+        max_tokens=4_096,
+        supports_tools=True,
+        context_window=128_000,
+        description="High-throughput 9B router for analyzing security prompt complexity, tool planning, and model dispatch.",
+    ),
+    "9brouter/qwen2.5:9b": ModelInfo(
+        model_id="qwen2.5:9b",
+        provider=ModelProvider.NINEBROUTER,
+        display_name="Qwen 2.5 9B Router",
+        max_tokens=4_096,
+        supports_tools=True,
+        context_window=128_000,
+        description="Qwen 2.5 9B router model tailored for rapid intent recognition and pentesting orchestration.",
+    ),
+    "9brouter/gemma2:9b": ModelInfo(
+        model_id="gemma2:9b",
+        provider=ModelProvider.NINEBROUTER,
+        display_name="Gemma 2 9B Router",
+        max_tokens=4_096,
+        context_window=128_000,
+        description="Google Gemma 2 9B router model for lightweight decision-making and query routing.",
+    ),
+
+    # ----- Custom Router (User-defined Endpoint / Proxy / Gateway) ---------
+    "custom_router/default": ModelInfo(
+        model_id="custom-default",
+        provider=ModelProvider.CUSTOM_ROUTER,
+        display_name="Custom Router Default",
+        max_tokens=4_096,
+        supports_tools=True,
+        context_window=128_000,
+        description="User-configured OpenAI-compatible router, reverse proxy, or private gateway endpoint.",
+    ),
 
     # ----- LiteLLM (AI Gateway) ------------------------------------------
     "litellm/anthropic/claude-sonnet-4-20250514": ModelInfo(
@@ -381,7 +542,62 @@ _PROVIDER_META: Dict[ModelProvider, Dict[str, Any]] = {
         "description": "Unified AI gateway supporting 100+ LLM providers via a single interface.",
         "required_env_vars": ["LITELLM_API_KEY"],
     },
+    ModelProvider.NINEBROUTER: {
+        "name": "9B Router",
+        "description": "9B parameter intelligent model and tool router for automated task dispatching.",
+        "required_env_vars": ["NINEBROUTER_BASE_URL"],
+    },
+    ModelProvider.CUSTOM_ROUTER: {
+        "name": "Custom Router",
+        "description": "Custom user-defined OpenAI-compatible router, reverse proxy, or API gateway.",
+        "required_env_vars": ["CUSTOM_ROUTER_BASE_URL"],
+    },
 }
+
+
+# ---------------------------------------------------------------------------
+# Dynamic Model Catalog & Registry
+# ---------------------------------------------------------------------------
+
+DYNAMIC_MODEL_CATALOG: Dict[str, ModelInfo] = {}
+
+
+def normalize_provider(val: Any) -> Optional[ModelProvider]:
+    """Normalize a provider name string or ModelProvider to a ModelProvider enum member."""
+    if isinstance(val, ModelProvider):
+        return val
+    if not isinstance(val, str):
+        return None
+    val_clean = val.lower().strip().replace("-", "_")
+    alias_map = {
+        "openai": ModelProvider.OPENAI,
+        "anthropic": ModelProvider.ANTHROPIC,
+        "claude": ModelProvider.ANTHROPIC,
+        "google": ModelProvider.GOOGLE,
+        "gemini": ModelProvider.GOOGLE,
+        "deepseek": ModelProvider.DEEPSEEK,
+        "glm": ModelProvider.GLM,
+        "zhipu": ModelProvider.GLM,
+        "local": ModelProvider.LOCAL,
+        "ollama": ModelProvider.LOCAL,
+        "openrouter": ModelProvider.OPENROUTER,
+        "litellm": ModelProvider.LITELLM,
+        "9brouter": ModelProvider.NINEBROUTER,
+        "9b": ModelProvider.NINEBROUTER,
+        "custom": ModelProvider.CUSTOM_ROUTER,
+        "custom_router": ModelProvider.CUSTOM_ROUTER,
+    }
+    return alias_map.get(val_clean)
+
+
+def register_dynamic_model(model_info: ModelInfo) -> None:
+    """Register a dynamically discovered model into the dynamic catalog."""
+    DYNAMIC_MODEL_CATALOG[model_info.model_id] = model_info
+
+
+def clear_dynamic_models() -> None:
+    """Clear all dynamically discovered models."""
+    DYNAMIC_MODEL_CATALOG.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +605,7 @@ _PROVIDER_META: Dict[ModelProvider, Dict[str, Any]] = {
 # ---------------------------------------------------------------------------
 
 def get_models_by_provider(provider: ModelProvider) -> List[ModelInfo]:
-    """Return all registered models that belong to *provider*.
+    """Return all registered models that belong to *provider* from both static and dynamic catalogs.
 
     Args:
         provider: The :class:`ModelProvider` to filter by.
@@ -398,33 +614,136 @@ def get_models_by_provider(provider: ModelProvider) -> List[ModelInfo]:
         A list of :class:`ModelInfo` instances for the given provider,
         sorted alphabetically by ``model_id``.
     """
-    return sorted(
-        [m for m in MODEL_CATALOG.values() if m.provider is provider],
-        key=lambda m: m.model_id,
-    )
+    models_by_id: Dict[str, ModelInfo] = {}
+    for m in MODEL_CATALOG.values():
+        if m.provider is provider:
+            models_by_id[m.model_id] = m
+    for m in DYNAMIC_MODEL_CATALOG.values():
+        if m.provider is provider:
+            models_by_id[m.model_id] = m
+    return sorted(models_by_id.values(), key=lambda m: m.model_id)
 
 
 def get_model_info(model_id: str) -> Optional[ModelInfo]:
-    """Look up a single model by its catalog key.
+    """Look up a single model by its catalog key or dynamic router prefix.
 
     Args:
         model_id: The key used in :data:`MODEL_CATALOG` (e.g. ``'gpt-5'``,
-            ``'claude-sonnet-5'``).
+            ``'gpt-astra'``, ``'claude-sonnet-5'``), dynamic catalog, or a prefixed route
+            such as ``'openrouter/<model>'``, ``'9brouter/<model>'``, or
+            ``'custom_router/<model>'``.
 
     Returns:
         The corresponding :class:`ModelInfo`, or ``None`` if not found.
     """
-    return MODEL_CATALOG.get(model_id)
+    if model_id in MODEL_CATALOG:
+        return MODEL_CATALOG[model_id]
+
+    if model_id in DYNAMIC_MODEL_CATALOG:
+        return DYNAMIC_MODEL_CATALOG[model_id]
+
+    # Dynamic OpenRouter routing prefix (e.g. openrouter/mistralai/mistral-large)
+    if model_id.startswith("openrouter/"):
+        sub_id = model_id[len("openrouter/") :]
+        return ModelInfo(
+            model_id=sub_id,
+            provider=ModelProvider.OPENROUTER,
+            display_name=f"{sub_id} (via OpenRouter)",
+            max_tokens=4096,
+            supports_streaming=True,
+            supports_tools=True,
+            context_window=128_000,
+            description=f"Dynamically routed OpenRouter model: {sub_id}",
+        )
+
+    # Dynamic 9B Router routing prefix (e.g. 9brouter/specialist-9b)
+    if model_id.startswith("9brouter/"):
+        sub_id = model_id[len("9brouter/") :]
+        return ModelInfo(
+            model_id=sub_id,
+            provider=ModelProvider.NINEBROUTER,
+            display_name=f"{sub_id} (via 9B Router)",
+            max_tokens=4096,
+            supports_streaming=True,
+            supports_tools=True,
+            context_window=128_000,
+            description=f"Dynamically routed 9B router model: {sub_id}",
+        )
+
+    # Dynamic Custom Router routing prefix (e.g. custom_router/sec-gpt or custom/my-llm)
+    if model_id.startswith("custom_router/") or model_id.startswith("custom/"):
+        prefix = "custom_router/" if model_id.startswith("custom_router/") else "custom/"
+        sub_id = model_id[len(prefix) :]
+        return ModelInfo(
+            model_id=sub_id,
+            provider=ModelProvider.CUSTOM_ROUTER,
+            display_name=f"{sub_id} (via Custom Router)",
+            max_tokens=4096,
+            supports_streaming=True,
+            supports_tools=True,
+            context_window=128_000,
+            description=f"Dynamically routed custom model: {sub_id}",
+        )
+
+    return None
 
 
 def list_all_models() -> List[ModelInfo]:
-    """Return every model in the catalog.
+    """Return every model in both the static and dynamic catalogs.
 
     Returns:
         A list of all :class:`ModelInfo` instances, sorted alphabetically
         by ``model_id``.
     """
-    return sorted(MODEL_CATALOG.values(), key=lambda m: m.model_id)
+    combined: Dict[str, ModelInfo] = dict(MODEL_CATALOG)
+    combined.update(DYNAMIC_MODEL_CATALOG)
+    return sorted(combined.values(), key=lambda m: m.model_id)
+
+
+def fetch_all_provider_models(
+    providers: Optional[List[Any]] = None,
+    force_refresh: bool = False,
+) -> Dict[str, List[ModelInfo]]:
+    """Query remote provider APIs and auto-register discovered models into DYNAMIC_MODEL_CATALOG.
+
+    Args:
+        providers: Optional list of provider enums or string names (e.g. ['openai', 'claude', 'gemini', 'deepseek', 'glm']).
+                   If omitted, attempts to fetch from all supported providers.
+        force_refresh: If True, clears existing dynamically fetched models before updating.
+
+    Returns:
+        A mapping of provider name to the list of newly discovered ModelInfo instances.
+    """
+    from .providers import ProviderFactory
+
+    if force_refresh:
+        clear_dynamic_models()
+
+    if providers:
+        target_providers: List[ModelProvider] = []
+        for p in providers:
+            norm = normalize_provider(p)
+            if norm and norm not in target_providers:
+                target_providers.append(norm)
+    else:
+        target_providers = list(ModelProvider)
+
+    discovered: Dict[str, List[ModelInfo]] = {}
+
+    for prov_enum in target_providers:
+        prov_key = prov_enum.value
+        discovered[prov_key] = []
+        try:
+            prov_instance = ProviderFactory.get_provider(prov_enum)
+            models = prov_instance.fetch_remote_models()
+            for m in models:
+                register_dynamic_model(m)
+                discovered[prov_key].append(m)
+        except Exception:
+            # Silent fallback so an error in one provider does not interrupt discovery in others
+            pass
+
+    return discovered
 
 
 def get_available_providers() -> List[Dict[str, Any]]:

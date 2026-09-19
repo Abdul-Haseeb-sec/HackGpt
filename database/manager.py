@@ -75,7 +75,8 @@ class DatabaseManager:
                 target=target,
                 scope=scope,
                 created_by=created_by,
-                auth_key_hash=auth_key_hash
+                auth_key_hash=auth_key_hash,
+                assessment_type=assessment_type
             )
             
             session.add(pentest_session)

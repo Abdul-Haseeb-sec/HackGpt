@@ -21,12 +21,17 @@ import math
 import hashlib
 import logging
 import ipaddress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional, Tuple, Set
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from collections import Counter, defaultdict
 import uuid
+
+
+def _utc_now() -> datetime:
+    """Return timezone-aware UTC datetime."""
+    return datetime.now(timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +192,7 @@ class Playbook:
     steps: List[Dict[str, Any]]
     mitre_tactics: List[str]
     estimated_time_minutes: int
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=_utc_now)
     tags: List[str] = field(default_factory=list)
 
 
@@ -1013,12 +1018,14 @@ class LogParser:
             '%d/%b/%Y:%H:%M:%S',
             '%Y/%m/%d %H:%M:%S',
         ]
+        cleaned_ts = ts_str.strip().strip('"')
+        now_year = datetime.now(timezone.utc).year
         for fmt in formats:
             try:
-                dt = datetime.strptime(ts_str.strip().strip('"'), fmt)
-                # If year is missing (syslog), assume current year
-                if dt.year == 1900:
-                    dt = dt.replace(year=datetime.utcnow().year)
+                if '%Y' not in fmt and '%y' not in fmt:
+                    dt = datetime.strptime(f"{now_year} {cleaned_ts}", f"%Y {fmt}")
+                else:
+                    dt = datetime.strptime(cleaned_ts, fmt)
                 return dt
             except ValueError:
                 continue
@@ -1339,7 +1346,7 @@ class AlertCorrelationEngine:
                     source_events=matched_entries[:20],  # cap events
                     iocs=relevant_iocs,
                     mitre_mappings=unique_mitre,
-                    timestamp=matched_entries[0].timestamp or datetime.utcnow(),
+                    timestamp=matched_entries[0].timestamp or _utc_now(),
                     score=score,
                     false_positive_probability=self._estimate_false_positive(
                         rule, matched_entries
@@ -1719,7 +1726,7 @@ class TimelineReconstructor:
                 sev_lower = entry.severity.lower()
                 if sev_lower in severity_keywords:
                     events.append(IncidentTimeline(
-                        timestamp=entry.timestamp or datetime.utcnow(),
+                        timestamp=entry.timestamp or _utc_now(),
                         event_type=f"LOG: {entry.source}",
                         description=entry.message[:200],
                         source=entry.source,
@@ -1905,7 +1912,7 @@ class AdvancedSOCAnalyzer:
             SOCAnalysisReport with all findings
         """
         self.logger.info("Starting SOC analysis pipeline...")
-        analysis_start = datetime.utcnow()
+        analysis_start = _utc_now()
 
         # Step 1: Parse & normalize logs
         log_entries = self.log_parser.parse_bulk(raw_logs, log_format)

@@ -45,8 +45,41 @@ __all__ = [
     "OllamaProvider",
     "OpenRouterProvider",
     "LiteLLMProvider",
+    "NineBRouterProvider",
+    "CustomRouterProvider",
     "ProviderFactory",
 ]
+
+
+# ---------------------------------------------------------------------------
+# HTTP Helpers for Dynamic Model Discovery
+# ---------------------------------------------------------------------------
+
+def _safe_http_get(
+    url: str,
+    headers: Optional[Dict[str, str]] = None,
+    timeout: int = 5,
+) -> Optional[Dict[str, Any]]:
+    """Perform a safe HTTP GET request with fallback between requests and urllib."""
+    if _HAS_REQUESTS and requests is not None and hasattr(requests, "get"):
+        try:
+            resp = requests.get(url, headers=headers or {}, timeout=timeout)
+            if hasattr(resp, "status_code") and resp.status_code == 200:
+                if hasattr(resp, "json"):
+                    return resp.json()
+            return None
+        except Exception as exc:
+            logger.debug("GET %s via requests failed: %s", url, exc)
+    try:
+        import json
+        import urllib.request
+        req = urllib.request.Request(url, headers=headers or {})
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            if getattr(response, "status", 200) == 200:
+                return json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        logger.debug("GET %s via urllib failed: %s", url, exc)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +127,14 @@ class BaseProvider(ABC):
     @abstractmethod
     def provider_name(self) -> str:
         """Human-readable name of this provider."""
+
+    def fetch_remote_models(self) -> List[ModelInfo]:
+        """Query the remote provider API for available models.
+
+        Returns:
+            List of ModelInfo objects discovered from the provider.
+        """
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +197,58 @@ class OpenAIProvider(BaseProvider):
     def provider_name(self) -> str:
         return "OpenAI"
 
+    def fetch_remote_models(self) -> List[ModelInfo]:
+        """Fetch available models from OpenAI API."""
+        models: List[ModelInfo] = []
+        if not self.is_available():
+            return models
+
+        if _HAS_OPENAI:
+            try:
+                client = self._get_client()
+                remote_models = client.models.list()
+                data = getattr(remote_models, "data", remote_models)
+                for m in data:
+                    mid = getattr(m, "id", None) or (m.get("id") if isinstance(m, dict) else str(m))
+                    if mid:
+                        models.append(
+                            ModelInfo(
+                                model_id=mid,
+                                provider=ModelProvider.OPENAI,
+                                display_name=f"OpenAI {mid}",
+                                max_tokens=16384,
+                                supports_streaming=True,
+                                supports_tools=True,
+                                context_window=128000,
+                                description=f"Discovered OpenAI model: {mid}",
+                            )
+                        )
+                if models:
+                    return models
+            except Exception as exc:
+                logger.debug("OpenAI client.models.list() failed: %s", exc)
+
+        url = f"{self.base_url.rstrip('/') if self.base_url else 'https://api.openai.com/v1'}/models"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        data = _safe_http_get(url, headers=headers)
+        if data and "data" in data and isinstance(data["data"], list):
+            for item in data["data"]:
+                mid = item.get("id") if isinstance(item, dict) else str(item)
+                if mid:
+                    models.append(
+                        ModelInfo(
+                            model_id=mid,
+                            provider=ModelProvider.OPENAI,
+                            display_name=f"OpenAI {mid}",
+                            max_tokens=16384,
+                            supports_streaming=True,
+                            supports_tools=True,
+                            context_window=128000,
+                            description=f"Discovered OpenAI model: {mid}",
+                        )
+                    )
+        return models
+
 
 # ---------------------------------------------------------------------------
 # Anthropic
@@ -217,6 +310,60 @@ class AnthropicProvider(BaseProvider):
     @property
     def provider_name(self) -> str:
         return "Anthropic"
+
+    def fetch_remote_models(self) -> List[ModelInfo]:
+        """Fetch available models from Anthropic API or latest Claude catalog."""
+        models: List[ModelInfo] = []
+        if not self.is_available():
+            return models
+
+        url = "https://api.anthropic.com/v1/models"
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+        }
+        data = _safe_http_get(url, headers=headers)
+        if data and "data" in data and isinstance(data["data"], list):
+            for item in data["data"]:
+                mid = item.get("id")
+                dname = item.get("display_name", f"Claude {mid}")
+                if mid:
+                    models.append(
+                        ModelInfo(
+                            model_id=mid,
+                            provider=ModelProvider.ANTHROPIC,
+                            display_name=dname,
+                            max_tokens=8192,
+                            supports_streaming=True,
+                            supports_tools=True,
+                            context_window=200000,
+                            description=f"Discovered Claude model: {dname}",
+                        )
+                    )
+        if not models:
+            # Fallback list of modern Claude frontier models
+            known_claude = [
+                ("claude-3-7-sonnet-20250219", "Claude 3.7 Sonnet", 200000),
+                ("claude-3-5-sonnet-20241022", "Claude 3.5 Sonnet v2", 200000),
+                ("claude-3-5-haiku-20241022", "Claude 3.5 Haiku", 200000),
+                ("claude-3-opus-20240229", "Claude 3 Opus", 200000),
+                ("claude-3-sonnet-20240229", "Claude 3 Sonnet", 200000),
+                ("claude-3-haiku-20240307", "Claude 3 Haiku", 200000),
+            ]
+            for mid, dname, ctx in known_claude:
+                models.append(
+                    ModelInfo(
+                        model_id=mid,
+                        provider=ModelProvider.ANTHROPIC,
+                        display_name=dname,
+                        max_tokens=8192,
+                        supports_streaming=True,
+                        supports_tools=True,
+                        context_window=ctx,
+                        description=f"Anthropic Claude frontier model: {dname}",
+                    )
+                )
+        return models
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +428,59 @@ class GoogleProvider(BaseProvider):
     def provider_name(self) -> str:
         return "Google"
 
+    def fetch_remote_models(self) -> List[ModelInfo]:
+        """Fetch available models from Google Generative Language API."""
+        models: List[ModelInfo] = []
+        if not self.is_available():
+            return models
+
+        url = f"{self.base_url.rstrip('/')}/models?key={self.api_key}"
+        data = _safe_http_get(url)
+        if data and "models" in data and isinstance(data["models"], list):
+            for item in data["models"]:
+                raw_name = item.get("name", "")
+                mid = raw_name.replace("models/", "") if raw_name.startswith("models/") else raw_name
+                dname = item.get("displayName", f"Gemini {mid}")
+                input_limit = item.get("inputTokenLimit", 1000000)
+                output_limit = item.get("outputTokenLimit", 8192)
+                desc = item.get("description", f"Discovered Google model: {mid}")
+                if mid:
+                    models.append(
+                        ModelInfo(
+                            model_id=mid,
+                            provider=ModelProvider.GOOGLE,
+                            display_name=dname,
+                            max_tokens=output_limit,
+                            supports_streaming=True,
+                            supports_tools=True,
+                            context_window=input_limit,
+                            description=desc,
+                        )
+                    )
+        if not models:
+            # Fallback list of modern Gemini frontier models
+            known_gemini = [
+                ("gemini-2.0-flash", "Gemini 2.0 Flash", 1048576, 8192),
+                ("gemini-2.0-flash-thinking-exp", "Gemini 2.0 Flash Thinking", 1048576, 8192),
+                ("gemini-2.0-pro", "Gemini 2.0 Pro", 2097152, 8192),
+                ("gemini-1.5-pro", "Gemini 1.5 Pro", 2000000, 8192),
+                ("gemini-1.5-flash", "Gemini 1.5 Flash", 1000000, 8192),
+            ]
+            for mid, dname, ctx, mtokens in known_gemini:
+                models.append(
+                    ModelInfo(
+                        model_id=mid,
+                        provider=ModelProvider.GOOGLE,
+                        display_name=dname,
+                        max_tokens=mtokens,
+                        supports_streaming=True,
+                        supports_tools=True,
+                        context_window=ctx,
+                        description=f"Google Gemini frontier model: {dname}",
+                    )
+                )
+        return models
+
 
 # ---------------------------------------------------------------------------
 # DeepSeek (OpenAI-compatible)
@@ -344,6 +544,76 @@ class DeepSeekProvider(BaseProvider):
     def provider_name(self) -> str:
         return "DeepSeek"
 
+    def fetch_remote_models(self) -> List[ModelInfo]:
+        """Fetch available models from DeepSeek API or frontier models."""
+        models: List[ModelInfo] = []
+        if not self.is_available():
+            return models
+
+        if _HAS_OPENAI:
+            try:
+                client = self._get_client()
+                remote_models = client.models.list()
+                data = getattr(remote_models, "data", remote_models)
+                for m in data:
+                    mid = getattr(m, "id", None) or (m.get("id") if isinstance(m, dict) else str(m))
+                    if mid:
+                        models.append(
+                            ModelInfo(
+                                model_id=mid,
+                                provider=ModelProvider.DEEPSEEK,
+                                display_name=f"DeepSeek {mid}",
+                                max_tokens=8192,
+                                supports_streaming=True,
+                                supports_tools=True,
+                                context_window=128000,
+                                description=f"Discovered DeepSeek model: {mid}",
+                            )
+                        )
+                if models:
+                    return models
+            except Exception as exc:
+                logger.debug("DeepSeek client.models.list() failed: %s", exc)
+
+        url = f"{self.base_url.rstrip('/')}/models"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        data = _safe_http_get(url, headers=headers)
+        if data and "data" in data and isinstance(data["data"], list):
+            for item in data["data"]:
+                mid = item.get("id") if isinstance(item, dict) else str(item)
+                if mid:
+                    models.append(
+                        ModelInfo(
+                            model_id=mid,
+                            provider=ModelProvider.DEEPSEEK,
+                            display_name=f"DeepSeek {mid}",
+                            max_tokens=8192,
+                            supports_streaming=True,
+                            supports_tools=True,
+                            context_window=128000,
+                            description=f"Discovered DeepSeek model: {mid}",
+                        )
+                    )
+        if not models:
+            for mid, dname in [
+                ("deepseek-chat", "DeepSeek Chat (V3)"),
+                ("deepseek-reasoner", "DeepSeek Reasoner (R1)"),
+                ("deepseek-r1-zero", "DeepSeek R1 Zero"),
+            ]:
+                models.append(
+                    ModelInfo(
+                        model_id=mid,
+                        provider=ModelProvider.DEEPSEEK,
+                        display_name=dname,
+                        max_tokens=8192,
+                        supports_streaming=True,
+                        supports_tools=True,
+                        context_window=128000,
+                        description=f"DeepSeek frontier reasoning model: {dname}",
+                    )
+                )
+        return models
+
 
 # ---------------------------------------------------------------------------
 # GLM / Zhipu (BigModel)
@@ -405,6 +675,60 @@ class GLMProvider(BaseProvider):
     @property
     def provider_name(self) -> str:
         return "GLM"
+
+    def fetch_remote_models(self) -> List[ModelInfo]:
+        """Fetch available models from GLM / Zhipu API or registered frontier models."""
+        models: List[ModelInfo] = []
+        if not self.is_available():
+            return models
+
+        base = "https://open.bigmodel.cn/api/paas/v4"
+        if self.base_url and "chat/completions" in self.base_url:
+            base = self.base_url.replace("/chat/completions", "")
+        url = f"{base.rstrip('/')}/models"
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        data = _safe_http_get(url, headers=headers)
+        if data and "data" in data and isinstance(data["data"], list):
+            for item in data["data"]:
+                mid = item.get("id") if isinstance(item, dict) else str(item)
+                if mid:
+                    models.append(
+                        ModelInfo(
+                            model_id=mid,
+                            provider=ModelProvider.GLM,
+                            display_name=f"GLM {mid}",
+                            max_tokens=4096,
+                            supports_streaming=True,
+                            supports_tools=True,
+                            context_window=128000,
+                            description=f"Discovered GLM model: {mid}",
+                        )
+                    )
+        if not models:
+            known_glm = [
+                ("glm-4-plus", "GLM-4 Plus", 128000),
+                ("glm-4-0520", "GLM-4 (0520)", 128000),
+                ("glm-4-air", "GLM-4 Air", 128000),
+                ("glm-4-flash", "GLM-4 Flash", 128000),
+                ("glm-4-long", "GLM-4 Long", 1000000),
+                ("glm-4v-plus", "GLM-4V Plus (Multimodal)", 128000),
+                ("glm-zero-preview", "GLM Zero (Preview)", 128000),
+                ("codegeex-4", "CodeGeeX-4", 128000),
+            ]
+            for mid, dname, cwindow in known_glm:
+                models.append(
+                    ModelInfo(
+                        model_id=mid,
+                        provider=ModelProvider.GLM,
+                        display_name=dname,
+                        max_tokens=4096,
+                        supports_streaming=True,
+                        supports_tools=True,
+                        context_window=cwindow,
+                        description=f"GLM frontier model: {dname}",
+                    )
+                )
+        return models
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +798,29 @@ class OllamaProvider(BaseProvider):
     def provider_name(self) -> str:
         return "Ollama"
 
+    def fetch_remote_models(self) -> List[ModelInfo]:
+        """Fetch locally running models from Ollama /api/tags."""
+        models: List[ModelInfo] = []
+        url = f"{self.base_url.rstrip('/')}/api/tags"
+        data = _safe_http_get(url)
+        if data and "models" in data and isinstance(data["models"], list):
+            for item in data["models"]:
+                name = item.get("name") or item.get("model")
+                if name:
+                    models.append(
+                        ModelInfo(
+                            model_id=name,
+                            provider=ModelProvider.LOCAL,
+                            display_name=f"Ollama {name}",
+                            max_tokens=4096,
+                            supports_streaming=True,
+                            supports_tools=False,
+                            context_window=32000,
+                            description=f"Local Ollama model: {name}",
+                        )
+                    )
+        return models
+
 
 # ---------------------------------------------------------------------------
 # OpenRouter (OpenAI-compatible aggregator)
@@ -492,8 +839,14 @@ class OpenRouterProvider(BaseProvider):
 
     def __init__(self, api_key: str = None, base_url: str = None):
         resolved_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        resolved_url = (
+            base_url
+            or os.getenv("OPENROUTER_BASE_URL")
+            or os.getenv("OPENROUTER_API_BASE")
+            or self._DEFAULT_BASE_URL
+        )
         super().__init__(
-            api_key=resolved_key, base_url=base_url or self._DEFAULT_BASE_URL
+            api_key=resolved_key, base_url=resolved_url
         )
         self._client: Optional[object] = None
 
@@ -542,6 +895,34 @@ class OpenRouterProvider(BaseProvider):
     @property
     def provider_name(self) -> str:
         return "OpenRouter"
+
+    def fetch_remote_models(self) -> List[ModelInfo]:
+        """Fetch available models from OpenRouter /models endpoint."""
+        models: List[ModelInfo] = []
+        url = f"{self.base_url.rstrip('/')}/models"
+        headers = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        data = _safe_http_get(url, headers=headers)
+        if data and "data" in data and isinstance(data["data"], list):
+            for item in data["data"]:
+                mid = item.get("id")
+                name = item.get("name", mid)
+                ctx = item.get("context_length", 128000)
+                if mid:
+                    models.append(
+                        ModelInfo(
+                            model_id=f"openrouter/{mid}",
+                            provider=ModelProvider.OPENROUTER,
+                            display_name=f"OpenRouter: {name}",
+                            max_tokens=8192,
+                            supports_streaming=True,
+                            supports_tools=True,
+                            context_window=ctx,
+                            description=item.get("description", f"OpenRouter model: {mid}"),
+                        )
+                    )
+        return models
 
 
 # ---------------------------------------------------------------------------
@@ -619,6 +1000,349 @@ class LiteLLMProvider(BaseProvider):
     def provider_name(self) -> str:
         return "LiteLLM"
 
+    def fetch_remote_models(self) -> List[ModelInfo]:
+        """Fetch models from LiteLLM proxy /models endpoint if configured."""
+        models: List[ModelInfo] = []
+        if self.base_url:
+            url = f"{self.base_url.rstrip('/')}/models"
+            headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+            data = _safe_http_get(url, headers=headers)
+            if data and "data" in data and isinstance(data["data"], list):
+                for item in data["data"]:
+                    mid = item.get("id") if isinstance(item, dict) else str(item)
+                    if mid:
+                        models.append(
+                            ModelInfo(
+                                model_id=mid,
+                                provider=ModelProvider.LITELLM,
+                                display_name=f"LiteLLM: {mid}",
+                                max_tokens=8192,
+                                supports_streaming=True,
+                                supports_tools=True,
+                                context_window=128000,
+                                description=f"LiteLLM model: {mid}",
+                            )
+                        )
+        return models
+
+
+# ---------------------------------------------------------------------------
+# 9B Router (Intelligent Model & Task Dispatcher)
+# ---------------------------------------------------------------------------
+
+
+class NineBRouterProvider(BaseProvider):
+    """Provider client for 9B model routers and intelligent dispatch gateways.
+
+    A 9B Router is an efficient, high-throughput 9B-parameter model (e.g.
+    Qwen 2.5 9B, Gemma 2 9B, or a custom router endpoint) that analyzes
+    cybersecurity task complexity, decomposes multi-step penetration testing
+    prompts, and performs intent routing or direct generation.
+
+    Uses an OpenAI-compatible API interface with fallback to direct HTTP POST.
+    Defaults to ``http://localhost:8000/v1`` or ``NINEBROUTER_BASE_URL``.
+    """
+
+    _DEFAULT_BASE_URL = "http://localhost:8000/v1"
+
+    def __init__(self, api_key: str = None, base_url: str = None):
+        resolved_key = (
+            api_key
+            or os.getenv("NINEBROUTER_API_KEY")
+            or "ninebrouter-local-key"
+        )
+        resolved_url = (
+            base_url
+            or os.getenv("NINEBROUTER_BASE_URL")
+            or os.getenv("NINEBROUTER_ENDPOINT")
+            or self._DEFAULT_BASE_URL
+        )
+        super().__init__(api_key=resolved_key, base_url=resolved_url)
+        self._client: Optional[object] = None
+
+    def _get_client(self) -> "openai.OpenAI":
+        if self._client is None:
+            if not _HAS_OPENAI:
+                raise ImportError(
+                    "The 'openai' package is required for NineBRouterProvider. "
+                    "Install it with: pip install openai"
+                )
+            self._client = openai.OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                default_headers={
+                    "X-Router-Type": "9B-Dispatcher",
+                    "X-Title": "HackGPT-9B-Router",
+                },
+            )
+        return self._client  # type: ignore[return-value]
+
+    def chat_completion(
+        self,
+        model_id: str,
+        messages: List[Dict[str, str]],
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> str:
+        """Call 9B Router completions via OpenAI SDK or raw HTTP fallback."""
+        if _HAS_OPENAI:
+            try:
+                client = self._get_client()
+                response = client.chat.completions.create(
+                    model=model_id,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                return response.choices[0].message.content
+            except Exception as exc:
+                if not _HAS_REQUESTS:
+                    logger.error("NineBRouterProvider completion failed: %s", exc)
+                    raise
+
+        if not _HAS_REQUESTS:
+            raise ImportError(
+                "Either 'openai' or 'requests' package is required for NineBRouterProvider."
+            )
+
+        url = f"{self.base_url.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "X-Router-Type": "9B-Dispatcher",
+        }
+        payload = {
+            "model": model_id,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=120)
+            resp.raise_for_status()
+            data = resp.json()
+            if "choices" in data and len(data["choices"]) > 0:
+                choice = data["choices"][0]
+                if "message" in choice and "content" in choice["message"]:
+                    return choice["message"]["content"]
+                if "text" in choice:
+                    return choice["text"]
+            if "response" in data:
+                return data["response"]
+            return str(data)
+        except Exception as exc:
+            logger.error("NineBRouterProvider raw HTTP completion failed: %s", exc)
+            raise
+
+    def is_available(self) -> bool:
+        """Available when endpoint or key is configured, or local router port is reachable."""
+        if os.getenv("NINEBROUTER_BASE_URL") or os.getenv("NINEBROUTER_API_KEY"):
+            return True
+        if self.base_url and self.base_url != self._DEFAULT_BASE_URL:
+            return True
+        if _HAS_REQUESTS:
+            try:
+                resp = requests.get(f"{self.base_url.rstrip('/')}/models", timeout=1)
+                return resp.status_code in (200, 401, 403)
+            except Exception:
+                return False
+        return False
+
+    @property
+    def provider_name(self) -> str:
+        return "9B Router"
+
+    def fetch_remote_models(self) -> List[ModelInfo]:
+        """Fetch models from 9B router endpoint or return supported 9B specialist models."""
+        models: List[ModelInfo] = []
+        url = f"{self.base_url.rstrip('/')}/models"
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        data = _safe_http_get(url, headers=headers)
+        if data and "data" in data and isinstance(data["data"], list):
+            for item in data["data"]:
+                mid = item.get("id") if isinstance(item, dict) else str(item)
+                if mid:
+                    models.append(
+                        ModelInfo(
+                            model_id=f"9brouter/{mid}" if not mid.startswith("9brouter/") else mid,
+                            provider=ModelProvider.NINEBROUTER,
+                            display_name=f"9B Router: {mid}",
+                            max_tokens=4096,
+                            supports_streaming=True,
+                            supports_tools=True,
+                            context_window=32768,
+                            description=f"9B Router model: {mid}",
+                        )
+                    )
+        if not models:
+            for m_id, dname in [
+                ("9brouter/agent-router", "9B Intelligent Agent Router"),
+                ("9brouter/qwen2.5:9b", "Qwen 2.5 9B Security Router"),
+                ("9brouter/gemma2:9b", "Gemma 2 9B Router"),
+                ("9brouter/llama-3.1:9b", "Llama 3.1 9B Dispatcher"),
+                ("9brouter/deepseek-r1:8b", "DeepSeek R1 8B Distill Router"),
+            ]:
+                models.append(
+                    ModelInfo(
+                        model_id=m_id,
+                        provider=ModelProvider.NINEBROUTER,
+                        display_name=dname,
+                        max_tokens=4096,
+                        supports_streaming=True,
+                        supports_tools=True,
+                        context_window=32768,
+                        description="Specialized 9B parameter task and exploitation router",
+                    )
+                )
+        return models
+
+
+# ---------------------------------------------------------------------------
+# Custom Router (Generic OpenAI-Compatible Route / Reverse Proxy / Gateway)
+# ---------------------------------------------------------------------------
+
+
+class CustomRouterProvider(BaseProvider):
+    """Generic OpenAI-compatible custom route provider.
+
+    Enables routing through any user-provided reverse proxy, enterprise AI gateway,
+    or OpenAI-compatible router endpoint (e.g. OpenRouter private gateway,
+    LiteLLM proxy, Portkey, Cloudflare AI Gateway, vLLM, or custom internal route).
+
+    Configured via:
+        - ``CUSTOM_ROUTER_BASE_URL`` or ``HACKGPT_CUSTOM_ROUTE``
+        - ``CUSTOM_ROUTER_API_KEY``
+    """
+
+    _DEFAULT_BASE_URL = "http://localhost:8080/v1"
+
+    def __init__(self, api_key: str = None, base_url: str = None):
+        resolved_key = (
+            api_key
+            or os.getenv("CUSTOM_ROUTER_API_KEY")
+            or os.getenv("CUSTOM_API_KEY")
+            or os.getenv("OPENAI_API_KEY")
+            or "custom-route-key"
+        )
+        resolved_url = (
+            base_url
+            or os.getenv("CUSTOM_ROUTER_BASE_URL")
+            or os.getenv("HACKGPT_CUSTOM_ROUTE")
+            or os.getenv("CUSTOM_ROUTE_URL")
+            or self._DEFAULT_BASE_URL
+        )
+        super().__init__(api_key=resolved_key, base_url=resolved_url)
+        self._client: Optional[object] = None
+
+    def _get_client(self) -> "openai.OpenAI":
+        if self._client is None:
+            if not _HAS_OPENAI:
+                raise ImportError(
+                    "The 'openai' package is required for CustomRouterProvider. "
+                    "Install it with: pip install openai"
+                )
+            self._client = openai.OpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                default_headers={
+                    "X-Title": "HackGPT-Custom-Router",
+                },
+            )
+        return self._client  # type: ignore[return-value]
+
+    def chat_completion(
+        self,
+        model_id: str,
+        messages: List[Dict[str, str]],
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> str:
+        """Call Custom Router completions via OpenAI SDK or raw HTTP fallback."""
+        if _HAS_OPENAI:
+            try:
+                client = self._get_client()
+                response = client.chat.completions.create(
+                    model=model_id,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                return response.choices[0].message.content
+            except Exception as exc:
+                if not _HAS_REQUESTS:
+                    logger.error("CustomRouterProvider completion failed: %s", exc)
+                    raise
+
+        if not _HAS_REQUESTS:
+            raise ImportError(
+                "Either 'openai' or 'requests' package is required for CustomRouterProvider."
+            )
+
+        url = f"{self.base_url.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model_id,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=120)
+            resp.raise_for_status()
+            data = resp.json()
+            if "choices" in data and len(data["choices"]) > 0:
+                choice = data["choices"][0]
+                if "message" in choice and "content" in choice["message"]:
+                    return choice["message"]["content"]
+                if "text" in choice:
+                    return choice["text"]
+            if "response" in data:
+                return data["response"]
+            return str(data)
+        except Exception as exc:
+            logger.error("CustomRouterProvider raw HTTP completion failed: %s", exc)
+            raise
+
+    def is_available(self) -> bool:
+        """Available when custom route URL or API key is set."""
+        return bool(
+            os.getenv("CUSTOM_ROUTER_BASE_URL")
+            or os.getenv("HACKGPT_CUSTOM_ROUTE")
+            or os.getenv("CUSTOM_ROUTER_API_KEY")
+            or (self.base_url and self.base_url != self._DEFAULT_BASE_URL)
+        )
+
+    @property
+    def provider_name(self) -> str:
+        return "Custom Router"
+
+    def fetch_remote_models(self) -> List[ModelInfo]:
+        """Fetch models from custom OpenAI-compatible gateway /models endpoint."""
+        models: List[ModelInfo] = []
+        url = f"{self.base_url.rstrip('/')}/models"
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        data = _safe_http_get(url, headers=headers)
+        if data and "data" in data and isinstance(data["data"], list):
+            for item in data["data"]:
+                mid = item.get("id") if isinstance(item, dict) else str(item)
+                if mid:
+                    models.append(
+                        ModelInfo(
+                            model_id=f"custom_router/{mid}" if not mid.startswith("custom_router/") and not mid.startswith("custom/") else mid,
+                            provider=ModelProvider.CUSTOM_ROUTER,
+                            display_name=f"Custom Router: {mid}",
+                            max_tokens=8192,
+                            supports_streaming=True,
+                            supports_tools=True,
+                            context_window=128000,
+                            description=f"Custom routed model: {mid}",
+                        )
+                    )
+        return models
+
 
 # ---------------------------------------------------------------------------
 # Provider Factory
@@ -634,6 +1358,8 @@ _PROVIDER_CLASS_MAP: Dict[ModelProvider, type] = {
     ModelProvider.LOCAL: OllamaProvider,
     ModelProvider.OPENROUTER: OpenRouterProvider,
     ModelProvider.LITELLM: LiteLLMProvider,
+    ModelProvider.NINEBROUTER: NineBRouterProvider,
+    ModelProvider.CUSTOM_ROUTER: CustomRouterProvider,
 }
 
 
@@ -642,7 +1368,7 @@ class ProviderFactory:
 
     Usage::
 
-        provider, model_info = ProviderFactory.get_provider_for_model("gpt-4o")
+        provider, model_info = ProviderFactory.get_provider_for_model("gpt-astra")
         answer = provider.chat_completion(
             model_id=model_info.model_id,
             messages=[{"role": "user", "content": "Hello!"}],
@@ -652,19 +1378,24 @@ class ProviderFactory:
     _providers: Dict[ModelProvider, BaseProvider] = {}
 
     @classmethod
-    def get_provider(cls, provider: ModelProvider) -> BaseProvider:
-        """Return a cached provider instance, creating it on first access.
+    def get_provider(
+        cls,
+        provider: ModelProvider,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ) -> BaseProvider:
+        """Return a provider instance, creating it on first access.
 
-        Args:
-            provider: The :class:`ModelProvider` enum member to instantiate.
-
-        Returns:
-            A :class:`BaseProvider` subclass instance for the requested
-            provider.
-
-        Raises:
-            ValueError: If no concrete class is registered for *provider*.
+        If custom *api_key* or *base_url* is provided, creates a dedicated instance.
         """
+        if api_key is not None or base_url is not None:
+            provider_cls = _PROVIDER_CLASS_MAP.get(provider)
+            if provider_cls is None:
+                raise ValueError(
+                    f"No provider implementation registered for {provider!r}"
+                )
+            return provider_cls(api_key=api_key, base_url=base_url)
+
         if provider not in cls._providers:
             provider_cls = _PROVIDER_CLASS_MAP.get(provider)
             if provider_cls is None:
@@ -676,23 +1407,85 @@ class ProviderFactory:
         return cls._providers[provider]
 
     @classmethod
-    def get_provider_for_model(cls, model_id: str) -> Tuple[BaseProvider, ModelInfo]:
+    def get_provider_for_model(
+        cls,
+        model_id: str,
+        custom_route: Optional[str] = None,
+        api_key: Optional[str] = None,
+    ) -> Tuple[BaseProvider, ModelInfo]:
         """Look up a model in the catalog and return its provider instance.
+
+        Supports dynamic routing prefixes ('openrouter/...', '9brouter/...',
+        'custom_router/...', 'custom/...') as well as custom route endpoints.
 
         Args:
             model_id: The model identifier as registered in
-                :data:`MODEL_CATALOG`.
+                :data:`MODEL_CATALOG`, or a dynamic route prefix.
+            custom_route: Optional custom endpoint override URL.
+            api_key: Optional API key override.
 
         Returns:
             A ``(provider_instance, model_info)`` tuple.
 
         Raises:
-            ValueError: If *model_id* is not found in the catalog.
+            ValueError: If *model_id* cannot be resolved.
         """
         model_info = get_model_info(model_id)
         if model_info is None:
-            raise ValueError(f"Model '{model_id}' not found in MODEL_CATALOG")
-        provider = cls.get_provider(model_info.provider)
+            # Check for custom route or HACKGPT_PROVIDER setting
+            custom_provider_name = os.getenv("HACKGPT_PROVIDER", "").lower()
+            resolved_route = (
+                custom_route
+                or os.getenv("HACKGPT_CUSTOM_ROUTE")
+                or os.getenv("CUSTOM_ROUTER_BASE_URL")
+            )
+            if resolved_route or custom_provider_name in ("custom", "custom_router"):
+                model_info = ModelInfo(
+                    model_id=model_id,
+                    provider=ModelProvider.CUSTOM_ROUTER,
+                    display_name=f"{model_id} (via Custom Router)",
+                    max_tokens=4096,
+                    supports_streaming=True,
+                    supports_tools=True,
+                    context_window=128_000,
+                    description=f"Model '{model_id}' dispatched via custom router endpoint.",
+                )
+            elif custom_provider_name in ("9brouter", "ninebrouter"):
+                model_info = ModelInfo(
+                    model_id=model_id,
+                    provider=ModelProvider.NINEBROUTER,
+                    display_name=f"{model_id} (via 9B Router)",
+                    max_tokens=4096,
+                    supports_streaming=True,
+                    supports_tools=True,
+                    context_window=128_000,
+                    description=f"Model '{model_id}' dispatched via 9B router gateway.",
+                )
+            elif custom_provider_name == "openrouter":
+                model_info = ModelInfo(
+                    model_id=model_id,
+                    provider=ModelProvider.OPENROUTER,
+                    display_name=f"{model_id} (via OpenRouter)",
+                    max_tokens=4096,
+                    supports_streaming=True,
+                    supports_tools=True,
+                    context_window=128_000,
+                    description=f"Model '{model_id}' dispatched via OpenRouter.",
+                )
+            else:
+                raise ValueError(f"Model '{model_id}' not found in MODEL_CATALOG")
+
+        base_url_override = custom_route
+        if model_info.provider == ModelProvider.CUSTOM_ROUTER and not base_url_override:
+            base_url_override = (
+                os.getenv("HACKGPT_CUSTOM_ROUTE")
+                or os.getenv("CUSTOM_ROUTER_BASE_URL")
+            )
+        provider = cls.get_provider(
+            model_info.provider,
+            api_key=api_key,
+            base_url=base_url_override,
+        )
         return provider, model_info
 
     @classmethod
