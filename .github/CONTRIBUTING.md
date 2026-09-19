@@ -92,8 +92,7 @@ git checkout -b feature/your-feature-name
 ### Individual Supporters
 Support HackGPT development through:
 - **GitHub Sponsors**: [Sponsor Yashab Alam](https://github.com/sponsors/yashab-cyber)
-- **PayPal**: [paypal.me/yashab07](https://paypal.me/yashab07)
-- **Cryptocurrency**: See [DONATE.md](../DONATE.md) for addresses
+- **Cryptocurrency**: Email [yashabalam707@gmail.com](mailto:yashabalam707@gmail.com) or see [DONATE.md](../DONATE.md)
 
 ### Corporate Sponsorship
 **For companies interested in sponsoring:**

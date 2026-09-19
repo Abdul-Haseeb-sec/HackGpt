@@ -151,11 +151,13 @@ HackGPT Enterprise is a revolutionary AI-powered penetration testing platform th
 
 ## 💎 Cryptocurrency Donations
 
-### 🪙 Preferred Cryptocurrencies
-- **Solana (SOL)**: `5pEwP9JN8tRCXL5Vc9gQrxRyHHyn7J6P2DCC8cSQKDKT`
-- **Bitcoin (BTC)**: `bc1qmkptg6wqn9sjlx6wf7dk0px0yq4ynr4ukj2x8c`
-- **Ethereum (ETH)**: Contact for current address
-- **Other Cryptocurrencies**: Email for wallet addresses
+### 🪙 Supported Cryptocurrencies
+For cryptocurrency transfers and donations (**Solana, Bitcoin, Ethereum, USDT, USDC, and other tokens**), please reach out directly via email:
+
+- **Contact Email**: [yashabalam707@gmail.com](mailto:yashabalam707@gmail.com)
+- **Subject**: `HackGPT Crypto Sponsorship / Donation`
+
+Wallet addresses are provided exclusively upon email verification to protect contributors and ensure network address accuracy.
 
 ### ✅ Crypto Benefits
 - **Anonymous Options**: Maintain privacy while supporting

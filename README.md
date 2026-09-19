@@ -723,17 +723,13 @@ This project is licensed under the MIT License with additional enterprise terms:
 - Open source tool developers
 
 ### 💰 Support HackGPT Development
-Your donations help accelerate development and support the growing cybersecurity community:
+Your support accelerates development, research infrastructure, and frontier AI model integrations:
 
-**Cryptocurrency Donations (Recommended):**
-- **Solana (SOL)**: `5pEwP9JN8tRCXL5Vc9gQrxRyHHyn7J6P2DCC8cSQKDKT`
-- **Bitcoin (BTC)**: `bc1qmkptg6wqn9sjlx6wf7dk0px0yq4ynr4ukj2x8c`
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?style=for-the-badge&logo=github-sponsors)](https://github.com/sponsors/yashab-cyber)
 
-**Traditional Payment:**
-- **PayPal**: [yashabalam707@gmail.com](https://paypal.me/yashab07)
-- **Email**: yashabalam707@gmail.com
-
-**📄 Full Donation Information**: [DONATE.md](DONATE.md) - Support tiers, funding goals, and recognition programs
+- **💖 GitHub Sponsors (Active)**: [Sponsor @yashab-cyber on GitHub](https://github.com/sponsors/yashab-cyber)
+- **🪙 Cryptocurrency Donations**: For transfers (**Solana, Bitcoin, Ethereum, USDT, etc.**), please email **[yashabalam707@gmail.com](mailto:yashabalam707@gmail.com)**
+- **📄 Full Sponsorship & Donation Guide**: See [DONATE.md](DONATE.md) for tier perks, transparency reports, and roadmap goals
 
 ## ⚖️ Legal & Compliance
 

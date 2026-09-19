@@ -7,6 +7,7 @@
 
 ![Version](https://img.shields.io/badge/version-2026.09.19-green.svg)
 ![Donations](https://img.shields.io/badge/donations-welcome-brightgreen.svg)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?style=for-the-badge&logo=github-sponsors)](https://github.com/sponsors/yashab-cyber)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 > **🚀 Supporting Innovation in AI-Powered Penetration Testing & Enterprise Cybersecurity Platform 🔒**
@@ -23,46 +24,36 @@
 - 💻 **Professional Tools** - Advanced web interface, CLI automation, and AI-driven exploitation frameworks
 - 🧠 **AI Research** - Machine learning for vulnerability analysis, intelligent payload crafting, and automated exploitation strategies
 
-## 💳 How to Donate
+## 💳 How to Donate & Sponsor
 
-### 🌟 Preferred Methods
+### 💖 GitHub Sponsors (Active)
 
-#### 💱 Cryptocurrency (Recommended)
-*Secure, fast, and anonymous donations*
+<div align="center">
+  <a href="https://github.com/sponsors/yashab-cyber">
+    <img src="https://img.shields.io/badge/Sponsor%20HackGPT-%E2%9D%A4-ea4aaa?style=for-the-badge&logo=github-sponsors&logoColor=white" alt="Sponsor HackGPT on GitHub Sponsors" height="42">
+  </a>
+</div>
 
-**Solana (SOL) - ACTIVE**
-```
-5pEwP9JN8tRCXL5Vc9gQrxRyHHyn7J6P2DCC8cSQKDKT
-```
+<br>
 
-**Ethereum (ETH) & ERC-20 Tokens**
-```
-[ETH Wallet Address - Contact yashabalam707@gmail.com for current address]
-```
+GitHub Sponsorship is **officially active**! You can now sponsor HackGPT Enterprise development directly on GitHub with flexible monthly or one-time tiers:
 
-**Bitcoin (BTC)**
-```
-bc1qmkptg6wqn9sjlx6wf7dk0px0yq4ynr4ukj2x8c
-```
+👉 **[Sponsor @yashab-cyber on GitHub Sponsors](https://github.com/sponsors/yashab-cyber)**
 
-**Litecoin (LTC)**
-```
-[LTC Wallet Address - Contact yashabalam707@gmail.com for current address]
-```
+---
 
-**Dogecoin (DOGE)**
-```
-[DOGE Wallet Address - Contact yashabalam707@gmail.com for current address]
-```
+### 🪙 Cryptocurrency Transfer
+*Secure, direct, and borderless support for cybersecurity & AI research*
 
-> **✅ Verified Address:** The Solana wallet address above is verified and active for donations.  
-> **⚠️ Other Cryptocurrencies:** Please contact us at **yashabalam707@gmail.com** to get current wallet addresses for other cryptocurrencies.
+To make a cryptocurrency donation (**Solana, Bitcoin, Ethereum, USDT, USDC, or any other cryptocurrency**), please send an email to:
 
-#### 🏦 Traditional Payment Methods
+📧 **Email:** [yashabalam707@gmail.com](mailto:yashabalam707@gmail.com)  
+📌 **Subject:** `HackGPT Crypto Donation Request`
 
-**PayPal**
-- Email: yashabalam707@gmail.com
-- [Direct PayPal Link](https://paypal.me/yashab07)
+> **🔒 Security Notice:**
+> Specific cryptocurrency wallet addresses are provided strictly via email inquiry (**yashabalam707@gmail.com**) to prevent address tampering, phishing, and spoofing, and to provide you with the correct verified network address for your transfer.
+
+---
 
 ### 💰 Donation Tiers
 
@@ -185,7 +176,7 @@ bc1qmkptg6wqn9sjlx6wf7dk0px0yq4ynr4ukj2x8c
 All payment methods are verified and legitimate. For security concerns:
 - Email: yashabalam707@gmail.com
 - Report suspicious activity immediately
-- Verify wallet addresses on official channels only
+- Verify wallet addresses on official channels only (via email: yashabalam707@gmail.com)
 
 ## 📞 Contact & Support
 
@@ -249,7 +240,7 @@ All payment methods are verified and legitimate. For security concerns:
 
 ## 🎉 **Thank You!**
 
-Every contribution, no matter the size, helps make Metasploit-AI better for everyone. Your support directly impacts:
+Every contribution, no matter the size, helps make HackGPT Enterprise better for everyone. Your support directly impacts:
 
 - 🔒 **Security professionals** conducting advanced penetration testing with HackGPT Enterprise
 - 🎓 **Students** learning AI and cybersecurity through HackGPT platform
@@ -280,5 +271,5 @@ Every contribution, no matter the size, helps make Metasploit-AI better for ever
   <h3>**Made with ❤️ by Yashab Alam and the HackGPT development team**</h3>
   <p><strong>Repository:</strong> <a href="https://github.com/yashab-cyber/HackGPT">github.com/yashab-cyber/HackGPT</a></p>
   
-  <p><em>Last updated: August 2025</em></p>
+  <p><em>Last updated: September 2026</em></p>
 </div>
