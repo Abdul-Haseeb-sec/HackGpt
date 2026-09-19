@@ -9,8 +9,10 @@ This document logs the release updates, bug fixes, and feature integrations for 
 > ### 💖 Critical Notice: Project Sponsorship, Donations & Funding Required
 > HackGPT Enterprise is an independent, community-driven AI security assessment framework. Maintaining cutting-edge penetration testing tools, supporting multi-provider AI model integrations, and sustaining security research infrastructure requires continuous resources. **We urgently require funds, donations, and sponsorships to maintain and advance this project.**
 >
-> **Please consider donating to support HackGPT development!**
-> - For sponsorships, grants, enterprise partnerships, or direct donation inquiries, contact the creator directly at: **yashabalam707@gmail.com**
+> **Please consider donating and sponsoring HackGPT development!**
+> - **GitHub Sponsors (Active)**: [Sponsor @yashab-cyber on GitHub Sponsors](https://github.com/sponsors/yashab-cyber)
+> - **Cryptocurrency Transfers**: For crypto donations (Solana, Bitcoin, Ethereum, USDT, etc.), please email: **yashabalam707@gmail.com**
+> - **Sponsorships & Inquiries**: Contact creator directly at: **yashabalam707@gmail.com**
 > - View full donation channels and guidelines in [DONATE.md](../DONATE.md).
 
 ---

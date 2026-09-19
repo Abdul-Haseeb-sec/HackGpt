@@ -5,9 +5,11 @@
 > ### 💖 Critical Notice: Support, Donations & Sponsorship Required
 > HackGPT Enterprise is an independent open-source cybersecurity and AI penetration testing research project. To continuously maintain the platform, support multi-provider frontier AI integrations, and sustain security research infrastructure, **we require funds, donations, and sponsorships to maintain this project**.
 >
-> **Please consider donating to support HackGPT development!**
-> - For sponsorships, grants, enterprise partnerships, or direct donation inquiries, please contact: **yashabalam707@gmail.com**
-> - For full contribution channels and sponsorship guidelines, please visit [DONATE.md](DONATE.md).
+> **Please consider donating and sponsoring HackGPT development!**
+> - **GitHub Sponsors (Active)**: [Sponsor @yashab-cyber on GitHub Sponsors](https://github.com/sponsors/yashab-cyber)
+> - **Cryptocurrency Transfers**: For crypto donations (Solana, Bitcoin, Ethereum, USDT, etc.), please email: **yashabalam707@gmail.com**
+> - **Sponsorships & Inquiries**: Contact creator at: **yashabalam707@gmail.com**
+> - **Full Guidelines & Tier Perks**: Please visit [DONATE.md](DONATE.md).
 
 ---
 
